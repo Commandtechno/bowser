@@ -82,7 +82,6 @@ pw-player .pw-state {
   align-items: center;
   justify-content: center;
   background: rgba(16, 18, 21, 0.85);
-  border: 1px solid var(--accent, #00ffc1);
   color: var(--accent, #00ffc1);
   pointer-events: none;
   opacity: 0;
@@ -110,7 +109,6 @@ pw-player .pw-spin {
   width: 36px;
   height: 36px;
   border: 2px solid var(--tertiary, #2c303a);
-  border-top-color: var(--accent, #00ffc1);
   border-radius: 50%;
   opacity: 0;
   pointer-events: none;
@@ -148,7 +146,6 @@ pw-player .pw-bar {
   gap: 2px;
   padding: 6px 8px;
   background: rgba(16, 18, 21, 0.92);
-  border-top: 1px solid var(--accent, #00ffc1);
   transition: opacity 0.2s;
 }
 

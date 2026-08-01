@@ -38,7 +38,6 @@ const user = Astro.locals.user!;
         }
       </select>
     </div>
-    <p class="hint">used when previewing code/text files</p>
 
     <div class="row">
       <label for="preview-mode-select">file previews</label>
@@ -52,7 +51,6 @@ const user = Astro.locals.user!;
         }
       </select>
     </div>
-    <p class="hint">how clicking a photo/video/file opens it</p>
   </section>
 
   <section>
@@ -100,7 +98,7 @@ const user = Astro.locals.user!;
   </section>
 
   {
-    user.isAdmin && (
+    user.role === "admin" && (
       <section id="users-section">
         <h3>
           <span class="rule">──</span> users
@@ -113,9 +111,13 @@ const user = Astro.locals.user!;
           <div class="inline wrap-sm">
             <input type="text" id="nu-username" placeholder="username" autocomplete="off" required />
             <input type="password" id="nu-password" placeholder="password" autocomplete="new-password" minlength="8" required />
-            <label class="check">
-              <input type="checkbox" id="nu-admin" /> admin
-            </label>
+            <select id="nu-role">
+              <option value="readonly">readonly</option>
+              <option value="member" selected>
+                member
+              </option>
+              <option value="admin">admin</option>
+            </select>
             <button class="btn" type="submit">create</button>
           </div>
           <span class="msg" id="users-msg" />
@@ -125,7 +127,7 @@ const user = Astro.locals.user!;
   }
 </dialog>
 
-<script define:vars={{ currentUserId: user.id, isAdmin: user.isAdmin }}>
+<script define:vars={{ currentUserId: user.id, isAdmin: user.role === "admin" }}>
   window.__currentUserId = currentUserId;
   window.__isAdmin = isAdmin;
 </script>
@@ -355,19 +357,23 @@ const user = Astro.locals.user!;
 
   const $usersList = document.getElementById("users-list");
 
+  type TRole = "readonly" | "member" | "admin";
+
   type TUserEntry = {
     id: number;
     username: string;
-    isAdmin: boolean;
+    role: TRole;
     hasAvatar: boolean;
     createdAt: number;
   };
+
+  const ROLES: TRole[] = ["readonly", "member", "admin"];
 
   if ($usersList) {
     const $createForm = document.getElementById("create-user-form") as HTMLFormElement;
     const $nuUsername = document.getElementById("nu-username") as HTMLInputElement;
     const $nuPassword = document.getElementById("nu-password") as HTMLInputElement;
-    const $nuAdmin = document.getElementById("nu-admin") as HTMLInputElement;
+    const $nuRole = document.getElementById("nu-role") as HTMLSelectElement;
     const $usersMsg = document.getElementById("users-msg")!;
 
     // every state must go through lit-html's render: writing textContent directly would
@@ -409,15 +415,15 @@ const user = Astro.locals.user!;
       );
     };
 
-    const toggleAdmin = (u: TUserEntry) => {
-      if (!confirm(`${u.isAdmin ? "revoke" : "grant"} admin for ${u.username}?`)) return;
+    const changeRole = (u: TUserEntry, role: TRole) => {
+      if (role === u.role) return;
       act(
         fetch("/api/users", {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id: u.id, isAdmin: !u.isAdmin })
+          body: JSON.stringify({ id: u.id, role })
         }),
-        `${u.username} is ${u.isAdmin ? "no longer" : "now"} an admin`
+        `${u.username} is now ${role}`
       );
     };
 
@@ -438,12 +444,16 @@ const user = Astro.locals.user!;
                   : html`<span>${u.username.slice(0, 2).toUpperCase()}</span>`}
               </div>
               <span class="row-name" title=${u.username}>${u.username}${isSelf ? " (you)" : ""}</span>
-              <span class="row-role">${u.isAdmin ? "admin" : "member"}</span>
+              <select
+                class="role-select"
+                title="change role"
+                ?disabled=${isSelf}
+                @change=${(e: Event) => changeRole(u, (e.target as HTMLSelectElement).value as TRole)}
+              >
+                ${ROLES.map(role => html`<option value=${role} ?selected=${role === u.role}>${role}</option>`)}
+              </select>
               <div class="row-actions">
                 <button class="mini" title="reset password" @click=${() => resetPassword(u)}>reset pw</button>
-                <button class="mini" title="toggle admin" ?disabled=${isSelf} @click=${() => toggleAdmin(u)}>
-                  ${u.isAdmin ? "demote" : "promote"}
-                </button>
                 <button class="mini danger" title="delete user" ?disabled=${isSelf} @click=${() => deleteUser(u)}>
                   delete
                 </button>
@@ -464,7 +474,7 @@ const user = Astro.locals.user!;
           body: JSON.stringify({
             username: $nuUsername.value,
             password: $nuPassword.value,
-            isAdmin: $nuAdmin.checked
+            role: $nuRole.value
           })
         }),
         `created ${$nuUsername.value}`
@@ -583,12 +593,6 @@ const user = Astro.locals.user!;
   input[type="text"]:focus,
   input[type="password"]:focus {
     border-color: var(--accent);
-  }
-
-  .hint {
-    color: darkgray;
-    margin: 4px 0 0;
-    font-size: 0.85em;
   }
 
   .avatar-controls {
@@ -724,6 +728,22 @@ const user = Astro.locals.user!;
   #settings-dialog .row-role {
     color: darkgray;
     font-size: 0.85em;
+  }
+
+  #settings-dialog .role-select {
+    flex-shrink: 0;
+    background-color: var(--tertiary);
+    color: lightgray;
+    border: none;
+    padding: 3px 5px;
+    font-family: inherit;
+    font-size: 0.8em;
+    cursor: pointer;
+  }
+
+  #settings-dialog .role-select:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 
   #settings-dialog .row-actions {

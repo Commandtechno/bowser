@@ -3,9 +3,24 @@ import { and, count, desc, eq, gt, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { DEFAULT_ACCENT, DEFAULT_PREVIEW_MODE, DEFAULT_SYNTAX_THEME, sessions, shareLinks, users } from "./schema";
+import {
+  DEFAULT_ACCENT,
+  DEFAULT_PREVIEW_MODE,
+  DEFAULT_ROLE,
+  DEFAULT_SYNTAX_THEME,
+  isValidRole,
+  ROLES,
+  sessions,
+  shareLinks,
+  users,
+  type TRole
+} from "./schema";
 
-export { DEFAULT_ACCENT, DEFAULT_PREVIEW_MODE, DEFAULT_SYNTAX_THEME };
+export { DEFAULT_ACCENT, DEFAULT_PREVIEW_MODE, DEFAULT_ROLE, DEFAULT_SYNTAX_THEME, isValidRole, ROLES };
+export type { TRole };
+
+// readonly accounts can browse/view/download but can't touch the filesystem or share links
+export const canWrite = (user: { role: TRole }): boolean => user.role !== "readonly";
 
 const DB_PATH = resolve(import.meta.env.DB_PATH || "./data/app.db");
 mkdirSync(dirname(DB_PATH), { recursive: true });
@@ -30,7 +45,7 @@ const bootstrap = async (): Promise<void> => {
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
       password_hash TEXT NOT NULL,
-      is_admin      INTEGER NOT NULL DEFAULT 0,
+      role          TEXT NOT NULL DEFAULT '${DEFAULT_ROLE}',
       accent_color  TEXT NOT NULL DEFAULT '${DEFAULT_ACCENT}',
       syntax_theme  TEXT NOT NULL DEFAULT '${DEFAULT_SYNTAX_THEME}',
       preview_mode  TEXT NOT NULL DEFAULT '${DEFAULT_PREVIEW_MODE}',
@@ -65,6 +80,14 @@ const bootstrap = async (): Promise<void> => {
     await client.execute(`ALTER TABLE users ADD COLUMN preview_mode TEXT NOT NULL DEFAULT '${DEFAULT_PREVIEW_MODE}'`);
   }
 
+  // upgrading from the old boolean is_admin column - the column itself is left in place
+  // (unused going forward) rather than dropped, matching this file's additive-only approach
+  const hasRole = cols.rows.some(row => row.name === "role");
+  const hasIsAdmin = cols.rows.some(row => row.name === "is_admin");
+  if (!hasRole) {
+    await client.execute(`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT '${DEFAULT_ROLE}'`);
+    if (hasIsAdmin) await client.execute(`UPDATE users SET role = 'admin' WHERE is_admin = 1`);
+  }
 };
 
 const ready = (globalForDb.__appDbReady ??= bootstrap());
@@ -72,7 +95,7 @@ const ready = (globalForDb.__appDbReady ??= bootstrap());
 export type TUser = {
   id: number;
   username: string;
-  isAdmin: boolean;
+  role: TRole;
   accentColor: string;
   syntaxTheme: string;
   previewMode: string;
@@ -84,7 +107,7 @@ const userSelection = {
   id: users.id,
   username: users.username,
   passwordHash: users.passwordHash,
-  isAdmin: users.isAdmin,
+  role: users.role,
   accentColor: users.accentColor,
   syntaxTheme: users.syntaxTheme,
   previewMode: users.previewMode,
@@ -95,7 +118,7 @@ const userSelection = {
 const toUser = (row: {
   id: number;
   username: string;
-  isAdmin: boolean;
+  role: TRole;
   accentColor: string;
   syntaxTheme: string;
   previewMode: string;
@@ -104,7 +127,7 @@ const toUser = (row: {
 }): TUser => ({
   id: row.id,
   username: row.username,
-  isAdmin: row.isAdmin,
+  role: row.role,
   accentColor: row.accentColor,
   syntaxTheme: row.syntaxTheme,
   previewMode: row.previewMode,
@@ -142,9 +165,9 @@ export const listUsers = async (): Promise<TUser[]> => {
   return rows.map(toUser);
 };
 
-export const createUser = async (username: string, passwordHash: string, isAdmin: boolean): Promise<TUser> => {
+export const createUser = async (username: string, passwordHash: string, role: TRole): Promise<TUser> => {
   await ready;
-  const [{ id }] = await db.insert(users).values({ username, passwordHash, isAdmin }).returning({ id: users.id });
+  const [{ id }] = await db.insert(users).values({ username, passwordHash, role }).returning({ id: users.id });
   return (await getUserById(id))!;
 };
 
@@ -158,9 +181,9 @@ export const setPasswordHash = async (id: number, passwordHash: string): Promise
   await db.update(users).set({ passwordHash }).where(eq(users.id, id));
 };
 
-export const setAdmin = async (id: number, isAdmin: boolean): Promise<void> => {
+export const setRole = async (id: number, role: TRole): Promise<void> => {
   await ready;
-  await db.update(users).set({ isAdmin }).where(eq(users.id, id));
+  await db.update(users).set({ role }).where(eq(users.id, id));
 };
 
 export const setAccentColor = async (id: number, accentColor: string): Promise<void> => {

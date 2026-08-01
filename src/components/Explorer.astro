@@ -22,6 +22,9 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
   <div id="explorer"></div>
 </div>
 
+<input type="file" id="upload-file-input" multiple hidden />
+<input type="file" id="upload-folder-input" multiple hidden />
+
 <script define:vars={{ previewMode }}>
   window.__previewMode = previewMode;
 </script>
@@ -33,7 +36,8 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
   import { humanDate, humanSize } from "../lib/format";
   import { closePreview, openPreview, getPreviewItem } from "../lib/previewState";
   import { openContextMenu } from "../lib/contextMenu";
-  import { fileContextMenuItems, folderContextMenuItems } from "../lib/folderActions";
+  import { canWriteClient, createFolderInteractive, fileContextMenuItems, folderContextMenuItems } from "../lib/folderActions";
+  import { enqueueDrop, enqueueFiles, enqueueFileListWithPaths } from "../lib/uploadQueue";
   import "../lib/player";
 
   // fancybox (js + css) is only needed in lightbox mode - dynamically imported so panel-mode
@@ -123,6 +127,7 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
         html`<a
           class="item dir"
           href="#${dirPath.join("/")}"
+          data-dir-name="${dir}"
           @contextmenu=${(e: MouseEvent) => {
             e.preventDefault();
             openContextMenu(e.clientX, e.clientY, folderContextMenuItems(dirPath));
@@ -252,7 +257,11 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
     }
     render(pathEls, $path);
 
-    const res = await fetch(`/api/list?path=${encodeURIComponent(currentPath.join("/"))}`);
+    // /api/list is served with a 60s cache-control for cheap repeated lookups (e.g. folder
+    // downloads re-listing the same dir), but that means the browser's HTTP cache can hand
+    // back a stale listing here after any mutation (upload/create/delete/rename/move) unless
+    // explicitly bypassed - this is the one call responsible for what the grid actually shows
+    const res = await fetch(`/api/list?path=${encodeURIComponent(currentPath.join("/"))}`, { cache: "no-store" });
     if (!res.ok) {
       listing = null;
       render(`folder "${currentPath.at(-1) ?? ""}" not found`, $explorer);
@@ -261,6 +270,111 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
     listing = await res.json();
     renderExplorer();
   };
+
+  const $uploadFileInput = document.getElementById("upload-file-input") as HTMLInputElement;
+  const $uploadFolderInput = document.getElementById("upload-folder-input") as HTMLInputElement;
+  // not a recognized JSX attribute in Astro's input typings, so it's set imperatively instead
+  // of in the template - lets the picker select a whole folder tree rather than plain files
+  $uploadFolderInput.setAttribute("webkitdirectory", "");
+
+  $uploadFileInput.addEventListener("change", () => {
+    if ($uploadFileInput.files?.length) enqueueFiles(getCurrentPath(), $uploadFileInput.files);
+    $uploadFileInput.value = ""; // otherwise re-picking the exact same file(s) wouldn't fire "change"
+  });
+
+  $uploadFolderInput.addEventListener("change", () => {
+    if ($uploadFolderInput.files?.length) enqueueFileListWithPaths(getCurrentPath(), $uploadFolderInput.files);
+    $uploadFolderInput.value = "";
+  });
+
+  // right-click on empty grid space (not on an .item, which handles its own context menu
+  // and doesn't stop this event from bubbling up) - offer to upload here or create a folder
+  $explorer.addEventListener("contextmenu", e => {
+    if ((e.target as HTMLElement).closest(".item") || !canWriteClient()) return;
+    e.preventDefault();
+    openContextMenu(e.clientX, e.clientY, [
+      { type: "action", label: "upload files…", onClick: () => $uploadFileInput.click() },
+      { type: "action", label: "upload folder…", onClick: () => $uploadFolderInput.click() },
+      { type: "separator" },
+      { type: "action", label: "new folder…", onClick: () => void createFolderInteractive(getCurrentPath()) }
+    ]);
+  });
+
+  // drag-and-drop upload: dropping anywhere in the grid uploads into the current folder,
+  // unless the drop lands on a specific folder tile, in which case it uploads straight into
+  // that folder without navigating there first
+  const hasFiles = (e: DragEvent): boolean => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files");
+
+  let dragDepth = 0;
+  let dragOverDirEl: HTMLElement | null = null;
+
+  const clearDragHighlight = () => {
+    $explorer.classList.remove("drag-over");
+    dragOverDirEl?.classList.remove("drag-target");
+    dragOverDirEl = null;
+  };
+
+  $explorer.addEventListener("dragenter", e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (!canWriteClient()) return;
+    dragDepth++;
+    $explorer.classList.add("drag-over");
+  });
+
+  $explorer.addEventListener("dragover", e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); // required for drop to fire at all
+    if (!canWriteClient()) {
+      e.dataTransfer!.dropEffect = "none";
+      return;
+    }
+    e.dataTransfer!.dropEffect = "copy";
+
+    const tile = (e.target as HTMLElement).closest<HTMLElement>(".item.dir");
+    if (tile !== dragOverDirEl) {
+      dragOverDirEl?.classList.remove("drag-target");
+      dragOverDirEl = tile;
+      dragOverDirEl?.classList.add("drag-target");
+    }
+  });
+
+  // dragenter/dragleave fire for every descendant boundary crossed, not just the container's
+  // own edge - a depth counter (rather than checking relatedTarget, which browsers leave null
+  // for drags originating outside the page) is what keeps the highlight from flickering
+  $explorer.addEventListener("dragleave", e => {
+    if (!hasFiles(e)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) clearDragHighlight();
+  });
+
+  $explorer.addEventListener("drop", e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    const tile = (e.target as HTMLElement).closest<HTMLElement>(".item.dir");
+    clearDragHighlight();
+    if (!canWriteClient() || !e.dataTransfer) return;
+
+    const targetDir = tile?.dataset.dirName ? [...getCurrentPath(), tile.dataset.dirName] : getCurrentPath();
+    void enqueueDrop(targetDir, e.dataTransfer);
+  });
+
+  // outside the grid, still swallow file drops so the browser doesn't navigate away to
+  // display the dropped file as if it were a page
+  document.addEventListener("dragover", e => {
+    if (hasFiles(e)) e.preventDefault();
+  });
+  document.addEventListener("drop", e => {
+    if (hasFiles(e)) e.preventDefault();
+  });
+
+  // a file/folder was created/deleted/renamed/moved somewhere - only worth a re-fetch if
+  // it landed in (or left) the directory currently on screen
+  window.addEventListener("fsChanged", e => {
+    const { parents } = (e as CustomEvent<{ parents: string[] }>).detail;
+    if (parents.includes(getCurrentPath().join("/"))) void onUpdate();
+  });
 
   $sort.addEventListener("change", () => {
     sortKey = $sort.value as TSortKey;
@@ -374,7 +488,13 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
     flex-direction: column;
     gap: 10px;
     font-size: 16px;
-    width: 100%;
+    /* fill whatever space is left beside the sidebar/preview panel, and allow shrinking
+       below its content's natural width - a plain "width: 100%" here would instead resolve
+       this item's flex-basis against the *whole* row's width (sidebar included), so it'd
+       never actually fit and the page would refuse to shrink below sidebar + this item's
+       full un-shrunk width */
+    flex: 1;
+    min-width: 0;
   }
 
   .topbar {
@@ -455,6 +575,11 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
     flex-direction: column;
   }
 
+  #explorer.drag-over {
+    outline: 2px dashed var(--accent);
+    outline-offset: -6px;
+  }
+
 </style>
 
 <style is:global>
@@ -498,6 +623,13 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
   /* the grid item currently open in the side panel (see syncPreviewHighlight) - same subtle
      highlight as :hover, so it stays persistent without competing for attention */
   #explorer .item.previewing {
+    background-color: rgba(169, 169, 169, 0.5);
+  }
+
+  /* folder tile currently under the cursor during a file drag - see the drop handlers above */
+  #explorer .item.dir.drag-target {
+    outline: 2px dashed var(--accent);
+    outline-offset: -4px;
     background-color: rgba(169, 169, 169, 0.5);
   }
 

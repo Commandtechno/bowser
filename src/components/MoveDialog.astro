@@ -1,0 +1,299 @@
+<dialog id="move-dialog">
+  <div class="dialog-head">
+    <h2>move item</h2>
+    <button class="close-btn" id="move-close" aria-label="close">✕</button>
+  </div>
+  <p class="hint" id="move-target"></p>
+  <div class="tree" id="move-tree"></div>
+  <div class="inline">
+    <button class="btn" id="move-confirm" disabled>move here</button>
+    <span class="msg" id="move-msg"></span>
+  </div>
+</dialog>
+
+<script>
+  import { html, render } from "lit-html";
+  import { moveEntryTo, type TMoveSource } from "../lib/folderActions";
+
+  const $dialog = document.getElementById("move-dialog") as HTMLDialogElement;
+  const $target = document.getElementById("move-target")!;
+  const $tree = document.getElementById("move-tree")!;
+  const $confirm = document.getElementById("move-confirm") as HTMLButtonElement;
+  const $msg = document.getElementById("move-msg")!;
+
+  let source: TMoveSource | null = null;
+  let selected: string[] | null = null;
+
+  // key ("" for root, else "a/b/c") -> child dir names, null while loading - reset on
+  // every open since the tree may have changed since the dialog was last shown
+  const cache = new Map<string, string[] | null>();
+  const expanded = new Set<string>();
+
+  const fetchDirs = async (key: string): Promise<string[]> => {
+    const res = await fetch(`/api/list?path=${encodeURIComponent(key)}`);
+    if (!res.ok) return [];
+    return (await res.json()).dirs;
+  };
+
+  const load = async (key: string) => {
+    cache.set(key, null);
+    renderTree();
+    cache.set(key, await fetchDirs(key));
+    renderTree();
+  };
+
+  const onToggle = (key: string, isOpen: boolean) => {
+    if (isOpen) {
+      expanded.add(key);
+      if (!cache.has(key)) load(key);
+    } else {
+      expanded.delete(key);
+    }
+  };
+
+  // moving a folder into itself or one of its own descendants isn't a valid destination
+  const isDisallowed = (path: string[]): boolean => {
+    if (!source || !source.isDir) return false;
+    const from = [...source.currentPath, source.name];
+    return from.length <= path.length && from.every((seg, i) => path[i] === seg);
+  };
+
+  const isCurrentParent = (path: string[]): boolean => !!source && path.join("/") === source.currentPath.join("/");
+
+  const select = (path: string[]) => {
+    if (isDisallowed(path)) return;
+    selected = path;
+    renderTree();
+  };
+
+  const syncConfirm = () => {
+    if (!selected) {
+      $confirm.disabled = true;
+      $msg.textContent = "";
+    } else if (isDisallowed(selected)) {
+      $confirm.disabled = true;
+      $msg.textContent = "can't move into itself";
+    } else if (isCurrentParent(selected)) {
+      $confirm.disabled = true;
+      $msg.textContent = "already there";
+    } else {
+      $confirm.disabled = false;
+      $msg.textContent = `→ /${selected.join("/") || "home"}`;
+    }
+  };
+
+  const renderChildren = (path: string[], pre: string): unknown => {
+    const dirs = cache.get(path.join("/"));
+    if (dirs === undefined) return null;
+    if (dirs === null) return html`<div class="loading"><span class="pre">${pre}</span>loading...</div>`;
+
+    return dirs.map((name, index) => {
+      const childPath = [...path, name];
+      const childKey = childPath.join("/");
+      const isLast = index === dirs.length - 1;
+      const isExpanded = expanded.has(childKey);
+      const childPre = pre + (isLast ? "   " : "│  ");
+      const disallowed = isDisallowed(childPath);
+
+      return html`
+        <details ?open=${isExpanded} @toggle=${(e: Event) => onToggle(childKey, (e.target as HTMLDetailsElement).open)}>
+          <summary>
+            <span class="pre">${pre}${isLast ? "└" : "├"}─ </span
+            ><button
+              type="button"
+              class="dir ${selected?.join("/") === childKey ? "selected" : ""}"
+              ?disabled=${disallowed}
+              title=${disallowed ? "can't move into itself" : name.trim()}
+              @click=${() => select(childPath)}
+            >
+              ${name.trim()}
+            </button>
+          </summary>
+          ${isExpanded ? renderChildren(childPath, childPre) : ""}
+        </details>
+      `;
+    });
+  };
+
+  const renderTree = () => {
+    render(
+      html`<button type="button" class="dir root ${selected?.length === 0 ? "selected" : ""}" @click=${() => select([])}>
+          ⌂ home
+        </button>
+        ${renderChildren([], "")}`,
+      $tree
+    );
+    syncConfirm();
+  };
+
+  window.addEventListener("openMoveDialog", e => {
+    source = (e as CustomEvent<TMoveSource>).detail;
+    selected = null;
+    cache.clear();
+    expanded.clear();
+
+    $target.textContent = `moving "${source.name}" - currently in /${source.currentPath.join("/") || "home"}`;
+    $confirm.textContent = "move here";
+    load("");
+    renderTree();
+    $dialog.showModal();
+  });
+
+  document.getElementById("move-close")!.addEventListener("click", () => $dialog.close());
+  $dialog.addEventListener("click", e => {
+    if (e.target === $dialog) $dialog.close();
+  });
+
+  $confirm.addEventListener("click", async () => {
+    if (!source || !selected) return;
+    $confirm.disabled = true;
+    $confirm.textContent = "moving…";
+    const ok = await moveEntryTo(source, selected);
+    $confirm.textContent = "move here";
+    if (ok) $dialog.close();
+    else syncConfirm();
+  });
+</script>
+
+<style>
+  #move-dialog {
+    width: min(480px, 92vw);
+    background-color: var(--secondary);
+    color: white;
+    border: var(--accent) 1px solid;
+    padding: 20px 24px;
+    font-family: inherit;
+  }
+
+  #move-dialog::backdrop {
+    background-color: rgba(0, 0, 0, 0.6);
+  }
+
+  .dialog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .dialog-head h2 {
+    margin: 0;
+    color: var(--accent);
+  }
+
+  .close-btn {
+    background: none;
+    border: none;
+    color: lightgray;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .close-btn:hover {
+    color: white;
+    background-color: var(--tertiary);
+  }
+
+  .hint {
+    color: darkgray;
+    margin: 6px 0;
+    font-size: 0.85em;
+    word-break: break-all;
+  }
+
+  .tree {
+    max-height: 40vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    white-space: nowrap;
+    background-color: var(--primary);
+    border: 1px solid var(--tertiary);
+    padding: 8px;
+    margin: 12px 0;
+  }
+
+  .inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .btn {
+    background-color: var(--accent);
+    color: var(--primary);
+    border: none;
+    padding: 7px 12px;
+    font-family: inherit;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .msg {
+    font-size: 0.85em;
+    color: darkgray;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+</style>
+
+<style is:global>
+  /* the tree is rendered client-side via lit-html, so these rules target elements Astro
+     never sees at compile time - they must stay unscoped to apply (same approach as
+     Sidebar.astro's own tree) */
+  #move-tree details {
+    margin: 0;
+  }
+
+  #move-tree summary {
+    display: block;
+    list-style: none;
+    cursor: pointer;
+  }
+
+  #move-tree summary::-webkit-details-marker {
+    display: none;
+  }
+
+  #move-tree summary::marker {
+    content: "";
+  }
+
+  #move-tree .pre,
+  #move-tree .loading {
+    white-space: pre;
+    color: darkgray;
+  }
+
+  #move-tree .dir {
+    all: unset;
+    color: white;
+    cursor: pointer;
+    padding: 1px 4px;
+  }
+
+  #move-tree .dir.root {
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  #move-tree .dir:hover:not(:disabled) {
+    background-color: rgba(169, 169, 169, 0.5);
+  }
+
+  #move-tree .dir.selected {
+    color: var(--accent);
+    background-color: rgba(169, 169, 169, 0.3);
+  }
+
+  #move-tree .dir:disabled {
+    color: darkgray;
+    cursor: not-allowed;
+  }
+</style>

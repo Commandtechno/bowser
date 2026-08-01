@@ -274,9 +274,20 @@ class PwPlayer extends HTMLElement {
     // when initFallback creates the canvas
     const videoWidth = this.fallback ? this.canvas!.width : this.video.videoWidth;
     const videoHeight = this.fallback ? this.canvas!.height : this.video.videoHeight;
+    box.style.aspectRatio = `${videoWidth} / ${videoHeight}`;
+
+    // in the preview panel, keep the box (and with it the control bar, which fills the box)
+    // spanning the panel's full width even for a narrow/portrait video - only its height
+    // shrinks to the video, via the max-height cap in PreviewPanel.astro's css, so the video
+    // pillarboxes inside instead of the whole player shrinking down to its width
+    if (box.hasAttribute("data-pw-box")) {
+      box.style.width = "";
+      box.style.height = "";
+      return;
+    }
+
     const rect = box.getBoundingClientRect();
     const heightConstrained = videoWidth / videoHeight < (rect.width || 1) / (rect.height || 1);
-    box.style.aspectRatio = `${videoWidth} / ${videoHeight}`;
     box.style.width = heightConstrained ? "auto" : "";
     box.style.height = heightConstrained ? "" : "auto";
   }

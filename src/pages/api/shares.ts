@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { stat } from "node:fs/promises";
+import { canWrite } from "../../lib/db";
 import { InvalidPathError, PHOTOS_DIR, resolveInDir } from "../../lib/media";
 import {
   createShareLink,
@@ -23,6 +24,7 @@ export const GET: APIRoute = async ({ url }) => {
 
 export const POST: APIRoute = async ({ request, locals }) => {
   const user = locals.user!;
+  if (!canWrite(user)) return json(403, { error: "read-only account" });
 
   let body: unknown;
   try {
@@ -59,7 +61,7 @@ export const DELETE: APIRoute = async ({ url, locals }) => {
 
   const share = await getShareLink(token);
   if (!share) return json(404, { error: "no such share link" });
-  if (share.createdBy !== user.id && !user.isAdmin) return json(403, { error: "not your share link" });
+  if (share.createdBy !== user.id && user.role !== "admin") return json(403, { error: "not your share link" });
 
   await deleteShareLink(token);
   return json(200, { ok: true });

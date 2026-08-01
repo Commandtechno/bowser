@@ -29,7 +29,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (!validatePassword(password))
     return json(400, { error: `password must be at least ${MIN_PASSWORD_LEN} characters` });
 
-  const user = await createUser(username, await hashPassword(password), true);
+  const user = await createUser(username, await hashPassword(password), "admin");
   const { token } = await createSession(user.id);
   setSessionCookie(cookies, token);
   return json(200, { ok: true });

@@ -1,9 +1,13 @@
 ---
 import Explorer from "../components/Explorer.astro";
+import MoveDialog from "../components/MoveDialog.astro";
 import PreviewPanel from "../components/PreviewPanel.astro";
 import ShareDialog from "../components/ShareDialog.astro";
 import Sidebar from "../components/Sidebar.astro";
+import UploadPanel from "../components/UploadPanel.astro";
 import Layout from "../layouts/Layout.astro";
+
+const canWrite = Astro.locals.user!.role !== "readonly";
 ---
 
 <Layout title="Technobowser">
@@ -13,7 +17,13 @@ import Layout from "../layouts/Layout.astro";
     <PreviewPanel />
   </div>
   <ShareDialog />
+  <MoveDialog />
+  <UploadPanel />
 </Layout>
+
+<script define:vars={{ canWrite }}>
+  window.__canWrite = canWrite;
+</script>
 
 <style>
   .container {

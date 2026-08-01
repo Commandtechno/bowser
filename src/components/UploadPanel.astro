@@ -1,0 +1,282 @@
+<div id="upload-panel" class="upload-panel" hidden>
+  <div class="upload-head">
+    <div class="upload-summary" id="upload-summary"></div>
+    <div class="upload-head-actions">
+      <button type="button" id="upload-collapse" class="head-btn" title="collapse">▁</button>
+      <button type="button" id="upload-close" class="head-btn" title="cancel all &amp; close" aria-label="close">✕</button>
+    </div>
+  </div>
+  <div class="upload-list" id="upload-list"></div>
+</div>
+
+<script>
+  import { html, render } from "lit-html";
+  import { cancelItem, clearAll, getItems, retryItem, removeItem, subscribe, type TUploadItem } from "../lib/uploadQueue";
+
+  const $panel = document.getElementById("upload-panel") as HTMLDivElement;
+  const $summary = document.getElementById("upload-summary")!;
+  const $list = document.getElementById("upload-list")!;
+  const $collapse = document.getElementById("upload-collapse")!;
+  const $close = document.getElementById("upload-close")!;
+
+  let collapsed = false;
+
+  const isActive = (item: TUploadItem) => item.status === "uploading" || item.status === "queued" || item.status === "retrying";
+  const pct = (item: TUploadItem) => (item.size ? Math.round((Math.min(item.loaded, item.size) / item.size) * 100) : 0);
+
+  const statusLabel = (item: TUploadItem): string => {
+    switch (item.status) {
+      case "queued":
+        return "waiting…";
+      case "uploading":
+        return `${pct(item)}%`;
+      case "retrying":
+        return "retrying…";
+      case "done":
+        return "done";
+      case "error":
+        return item.error ?? "failed";
+      case "cancelled":
+        return "cancelled";
+    }
+  };
+
+  // keeps the toast stack (also bottom-right, see Layout.astro) from overlapping this panel
+  const syncOffset = () => {
+    const h = $panel.hidden ? 0 : $panel.getBoundingClientRect().height + 12;
+    document.documentElement.style.setProperty("--upload-panel-h", `${h}px`);
+  };
+  new ResizeObserver(syncOffset).observe($panel);
+
+  const renderPanel = () => {
+    const items = getItems();
+    $panel.hidden = items.length === 0;
+    if (items.length === 0) {
+      syncOffset();
+      return;
+    }
+
+    const active = items.filter(isActive);
+    const errored = items.filter(it => it.status === "error");
+    const doneCount = items.filter(it => it.status === "done").length;
+
+    const totalSize = items.reduce((sum, it) => sum + it.size, 0);
+    const totalLoaded = items.reduce((sum, it) => sum + (it.status === "done" ? it.size : Math.min(it.loaded, it.size)), 0);
+    const overallPct = totalSize ? Math.round((totalLoaded / totalSize) * 100) : 100;
+
+    $panel.classList.toggle("has-error", errored.length > 0 && active.length === 0);
+    $panel.classList.toggle("collapsed", collapsed);
+
+    const summaryText =
+      active.length > 0
+        ? `uploading ${doneCount + errored.length}/${items.length} files · ${overallPct}%`
+        : errored.length > 0
+          ? `${errored.length} failed · ${doneCount} uploaded`
+          : `${doneCount} file${doneCount === 1 ? "" : "s"} uploaded`;
+
+    render(
+      html`<span class="upload-summary-text">${summaryText}</span>
+        <div class="upload-bar"><div class="upload-bar-fill" style=${`width:${overallPct}%`}></div></div>`,
+      $summary
+    );
+
+    render(
+      items.map(
+        item => html`
+          <div class="upload-row status-${item.status}">
+            <div class="upload-row-top">
+              <span class="upload-name" title=${item.relPath}>${item.file.name}</span>
+              <span class="upload-status">${statusLabel(item)}</span>
+              <div class="upload-row-actions">
+                ${isActive(item)
+                  ? html`<button type="button" class="row-btn" title="cancel" @click=${() => cancelItem(item.id)}>✕</button>`
+                  : item.status === "error"
+                    ? html`
+                        <button type="button" class="row-btn" title="retry" @click=${() => retryItem(item.id)}>↻</button>
+                        <button type="button" class="row-btn" title="remove" @click=${() => removeItem(item.id)}>✕</button>
+                      `
+                    : html`<button type="button" class="row-btn" title="remove" @click=${() => removeItem(item.id)}>✕</button>`}
+              </div>
+            </div>
+            ${isActive(item)
+              ? html`<div class="upload-bar small"><div class="upload-bar-fill" style=${`width:${pct(item)}%`}></div></div>`
+              : ""}
+          </div>
+        `
+      ),
+      $list
+    );
+
+    syncOffset();
+  };
+
+  subscribe(renderPanel);
+  renderPanel();
+
+  $collapse.addEventListener("click", () => {
+    collapsed = !collapsed;
+    $collapse.textContent = collapsed ? "▔" : "▁";
+    $collapse.title = collapsed ? "expand" : "collapse";
+    renderPanel();
+  });
+
+  $close.addEventListener("click", () => clearAll());
+</script>
+
+<style>
+  .upload-panel {
+    position: fixed;
+    z-index: 1090;
+    right: 16px;
+    bottom: 16px;
+    width: min(360px, calc(100vw - 32px));
+    background-color: var(--secondary);
+    border: var(--accent) 1px solid;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    max-height: min(60vh, 480px);
+  }
+
+  .upload-panel[hidden] {
+    display: none;
+  }
+
+  .upload-panel.has-error {
+    border-color: #ff6b81;
+  }
+
+  .upload-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 6px 8px 12px;
+    flex-shrink: 0;
+  }
+
+  .upload-summary {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .upload-head-actions {
+    display: flex;
+    gap: 2px;
+  }
+
+  .head-btn {
+    all: unset;
+    cursor: pointer;
+    color: darkgray;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .head-btn:hover {
+    color: white;
+    background-color: var(--tertiary);
+  }
+
+  .upload-list {
+    overflow-y: auto;
+    border-top: 1px solid var(--tertiary);
+  }
+
+  .upload-panel.collapsed .upload-list {
+    display: none;
+  }
+
+  .upload-panel.collapsed {
+    max-height: none;
+  }
+</style>
+
+<style is:global>
+  /* upload rows are rendered client-side via lit-html into a container Astro never sees at
+     compile time, so these must stay unscoped to apply (same approach as MoveDialog's tree) */
+  .upload-summary-text {
+    display: block;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .upload-bar {
+    height: 4px;
+    background-color: var(--primary);
+    overflow: hidden;
+  }
+
+  .upload-bar.small {
+    height: 3px;
+    margin-top: 4px;
+  }
+
+  .upload-bar-fill {
+    height: 100%;
+    background-color: var(--accent);
+    transition: width 0.15s linear;
+  }
+
+  .upload-row {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--tertiary);
+  }
+
+  .upload-row:last-child {
+    border-bottom: none;
+  }
+
+  .upload-row-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .upload-name {
+    flex: 1;
+    min-width: 0;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .upload-status {
+    color: darkgray;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .upload-row.status-error .upload-status {
+    color: #ff6b81;
+  }
+
+  .upload-row.status-done .upload-status {
+    color: var(--accent);
+  }
+
+  .upload-row-actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .row-btn {
+    all: unset;
+    cursor: pointer;
+    color: darkgray;
+    padding: 2px 6px;
+    font-size: 12px;
+  }
+
+  .row-btn:hover {
+    color: white;
+    background-color: var(--tertiary);
+  }
+</style>

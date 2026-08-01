@@ -1,13 +1,15 @@
 import mime from "mime";
-import { createReadStream } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 export const PHOTOS_DIR = resolve(import.meta.env.PHOTOS_DIR || "./photos");
 export const THUMBS_DIR = resolve(import.meta.env.THUMBS_DIR || "./.thumbs");
 
 export class InvalidPathError extends Error {}
+export class EntryExistsError extends Error {}
 
 // resolves a `/`-joined relative path against a root dir, rejecting any attempt to escape it
 export const resolveInDir = (root: string, relPath: string): string => {
@@ -51,6 +53,86 @@ export const listDir = async (root: string, relPath: string): Promise<TDirListin
   files.sort((a, b) => a.name.localeCompare(b.name));
 
   return { dirs, files };
+};
+
+// creates a single new, empty directory - the parent must already exist (mirrors mkdir,
+// not mkdir -p) since the only caller is "new folder" inside a directory the user is
+// already looking at
+export const createFolder = async (root: string, relPath: string): Promise<void> => {
+  const dirPath = resolveInDir(root, relPath);
+  if (dirPath === root) throw new InvalidPathError("cannot create the root directory");
+  await mkdir(dirPath);
+};
+
+// deletes a file or directory (recursively) - refuses to touch the root itself
+export const deleteEntry = async (root: string, relPath: string): Promise<void> => {
+  const targetPath = resolveInDir(root, relPath);
+  if (targetPath === root) throw new InvalidPathError("cannot delete the root directory");
+  await rm(targetPath, { recursive: true });
+};
+
+// renames/moves a file or directory - refuses to touch the root, to move an entry into
+// itself or one of its own descendants, or to clobber an existing entry at the destination
+export const moveEntry = async (root: string, fromRelPath: string, toRelPath: string): Promise<void> => {
+  const fromPath = resolveInDir(root, fromRelPath);
+  const toPath = resolveInDir(root, toRelPath);
+  if (fromPath === root || toPath === root) throw new InvalidPathError("cannot move the root directory");
+  if (toPath === fromPath || toPath.startsWith(fromPath + sep))
+    throw new InvalidPathError("cannot move an item into itself");
+
+  const destExists = await stat(toPath)
+    .then(() => true)
+    .catch(() => false);
+  if (destExists) throw new EntryExistsError(`"${toRelPath}" already exists`);
+
+  await rename(fromPath, toPath);
+};
+
+// picks a name that doesn't collide with anything already in dirPath, appending " (2)",
+// " (3)", ... before the extension - mirrors how common OS file managers resolve conflicts
+// instead of silently clobbering an existing file. Same stat-then-act race the rest of this
+// file accepts elsewhere (see moveEntry) rather than something transactional
+const uniqueName = async (dirPath: string, baseName: string): Promise<string> => {
+  const dot = baseName.lastIndexOf(".");
+  const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
+  const ext = dot > 0 ? baseName.slice(dot) : "";
+
+  let name = baseName;
+  for (let n = 2; await stat(join(dirPath, name)).then(() => true, () => false); n++) {
+    name = `${stem} (${n})${ext}`;
+  }
+  return name;
+};
+
+// writes an uploaded file's body to disk under root/relPath, creating any missing parent
+// directories and dodging name collisions (see uniqueName) - relPath's last segment is the
+// file name, everything before it is the destination directory. Streams directly from the
+// request body to disk rather than buffering, so upload size isn't bounded by memory
+export const writeUploadedFile = async (
+  root: string,
+  relPath: string,
+  body: ReadableStream<Uint8Array>
+): Promise<{ name: string }> => {
+  const segs = relPath.split("/").filter(seg => seg.length > 0);
+  if (segs.length === 0) throw new InvalidPathError("a file name is required");
+  if (segs.some(seg => seg === "." || seg === ".."))
+    throw new InvalidPathError(`path traversal rejected: ${relPath}`);
+
+  const dirPath = resolveInDir(root, segs.slice(0, -1).join("/"));
+  await mkdir(dirPath, { recursive: true });
+
+  const name = await uniqueName(dirPath, segs[segs.length - 1]);
+  const destPath = join(dirPath, name);
+
+  try {
+    await pipeline(Readable.fromWeb(body as never), createWriteStream(destPath));
+  } catch (e) {
+    // don't leave a truncated/partial file behind for a client-side retry to trip over
+    await rm(destPath, { force: true }).catch(() => {});
+    throw e;
+  }
+
+  return { name };
 };
 
 // streams a file with range support - shared by the authenticated /api/file endpoint and

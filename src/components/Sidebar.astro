@@ -110,6 +110,18 @@ const { dirs: rootDirs } = await listDir(PHOTOS_DIR, "");
     renderTree();
   };
 
+  // a folder was created/deleted/renamed/moved somewhere - refresh any cached listing for
+  // its parent (root's key "" is always "loaded", everything else only if expanded)
+  window.addEventListener("fsChanged", e => {
+    const { parents } = (e as CustomEvent<{ parents: string[] }>).detail;
+    for (const key of parents) {
+      if (!cache.has(key)) continue;
+      if (key === "" || expanded.has(key)) load(key);
+      else cache.delete(key);
+    }
+    renderTree();
+  });
+
   window.addEventListener("pathUpdate", () => ensureExpanded(getCurrentPath()));
   renderTree();
   ensureExpanded(getCurrentPath());
