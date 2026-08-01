@@ -1,0 +1,155 @@
+---
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+
+// per-user accent color; the value is validated as #rrggbb before it ever reaches the db
+const accent = Astro.locals.user?.accentColor;
+---
+
+<!doctype html>
+<html lang="en" style={accent ? `--accent: ${accent};` : undefined}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    --primary: #101215;
+    --secondary: #1b1d23;
+    --tertiary: #2c303a;
+    --accent: #00ffc1;
+  }
+
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+  }
+
+  html {
+    color-scheme: dark;
+    font-family: monospace;
+  }
+
+  body {
+    color: white;
+    margin: 0;
+    background-color: var(--primary);
+    padding: 10px;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  .accent {
+    color: var(--accent);
+  }
+
+  h3 {
+    color: lightgray;
+  }
+
+  /* context menu - built as plain DOM nodes by lib/contextMenu.ts, so these rules
+     must stay unscoped to apply */
+  .ctx-menu {
+    position: fixed;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    min-width: 180px;
+    padding: 4px;
+    background-color: var(--secondary);
+    border: var(--accent) 1px solid;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+
+  .ctx-menu-item {
+    all: unset;
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    padding: 7px 10px;
+    color: white;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  .ctx-menu-item:hover:not(:disabled) {
+    background-color: var(--tertiary);
+    color: var(--accent);
+  }
+
+  .ctx-menu-item:disabled {
+    color: darkgray;
+    cursor: not-allowed;
+  }
+
+  .ctx-menu-item.danger:hover:not(:disabled) {
+    background-color: #7f1d2b;
+    color: white;
+  }
+
+  .ctx-menu-sep {
+    height: 1px;
+    margin: 4px 6px;
+    background-color: var(--tertiary);
+  }
+
+  /* toast notifications - see lib/toast.ts */
+  .toast-container {
+    position: fixed;
+    z-index: 1100;
+    right: 16px;
+    bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .toast {
+    padding: 10px 14px;
+    background-color: var(--secondary);
+    border: var(--tertiary) 1px solid;
+    border-left: var(--accent) 3px solid;
+    color: white;
+    font-size: 14px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transform: translateY(8px);
+    transition:
+      opacity 0.2s,
+      transform 0.2s;
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .toast-success {
+    border-left-color: var(--accent);
+  }
+
+  .toast-error {
+    border-left-color: #ff6b81;
+  }
+</style>

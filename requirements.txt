@@ -1,0 +1,6 @@
+# system binaries required on PATH (not managed by npm/yarn)
+ffmpeg     # video thumbnail frame extraction + audio cover art (src/lib/preview.ts); also
+           # provides ffprobe, used for video/audio metadata (src/lib/meta.ts)
+exiftool   # raw photo (RWL, CR2, NEF, ARW, DNG, ...) preview extraction (src/lib/preview.ts);
+           # also used for image/raw/pdf metadata (src/lib/meta.ts)
+poppler    # pdftoppm, pdf first-page thumbnails (src/lib/preview.ts)

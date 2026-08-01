@@ -1,0 +1,100 @@
+---
+// pdf.js viewer - shown in an iframe by the lightbox (see Explorer.astro); the document
+// itself is streamed from /api/file, this page only handles rendering
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pdf viewer</title>
+  </head>
+  <body>
+    <div id="status">loading…</div>
+    <div id="pages"></div>
+  </body>
+</html>
+
+<script>
+  // the legacy build supports a wider browser range than the modern one (which needs
+  // bleeding-edge features like Uint8Array.toHex)
+  import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
+  import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
+
+  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+
+  const $status = document.getElementById("status")!;
+  const $pages = document.getElementById("pages")!;
+
+  const load = async () => {
+    const path = new URLSearchParams(location.search).get("path");
+    if (!path) {
+      $status.textContent = "no file specified";
+      return;
+    }
+    document.title = path.split("/").at(-1)!;
+
+    const doc = await pdfjs.getDocument({ url: `/api/file?path=${encodeURIComponent(path)}` }).promise;
+
+    // render at the page container's width; extra devicePixelRatio resolution keeps
+    // text crisp, the canvas is then scaled back down with css
+    const dpr = window.devicePixelRatio || 1;
+
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = $pages.clientWidth / baseViewport.width;
+      const viewport = page.getViewport({ scale: scale * dpr });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      // the canvas holds dpr-scaled pixels; display it back at css size (inline style
+      // because astro's scoped css can't match elements created at runtime)
+      canvas.style.width = "100%";
+      canvas.style.height = "auto";
+      $pages.appendChild(canvas);
+      if (i === 1) $status.remove();
+
+      await page.render({ canvas, viewport }).promise;
+    }
+  };
+
+  load().catch(e => {
+    console.error(e);
+    $status.textContent = `failed to load pdf: ${e?.message ?? e}`;
+  });
+</script>
+
+<style is:global>
+  html,
+  body {
+    margin: 0;
+    min-height: 100%;
+    background-color: #24292e;
+    font-family: monospace;
+  }
+
+  #status {
+    color: darkgray;
+    text-align: center;
+    padding: 40px 20px;
+  }
+
+  #pages {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+
+  #pages canvas {
+    width: 100%;
+    height: auto;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+  }
+</style>

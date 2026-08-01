@@ -1,0 +1,802 @@
+---
+import { PREVIEW_MODES } from "../lib/previewMode";
+import { ACCENT_PRESETS, SYNTAX_THEMES } from "../lib/themes";
+
+const user = Astro.locals.user!;
+---
+
+<dialog id="settings-dialog">
+  <div class="dialog-head">
+    <h2>settings</h2>
+    <button class="close-btn" id="settings-close" aria-label="close">✕</button>
+  </div>
+
+  <section>
+    <h3><span class="rule">──</span> appearance</h3>
+
+    <div class="row">
+      <label for="accent-input">accent color</label>
+      <div class="accent-controls">
+        <input type="color" id="accent-input" value={user.accentColor} />
+        {
+          ACCENT_PRESETS.map(color => (
+            <button class="swatch" data-color={color} style={`background-color: ${color}`} title={color} />
+          ))
+        }
+      </div>
+    </div>
+
+    <div class="row">
+      <label for="theme-select">syntax highlighting</label>
+      <select id="theme-select">
+        {
+          SYNTAX_THEMES.map(theme => (
+            <option value={theme.id} selected={theme.id === user.syntaxTheme}>
+              {theme.label}
+            </option>
+          ))
+        }
+      </select>
+    </div>
+    <p class="hint">used when previewing code/text files</p>
+
+    <div class="row">
+      <label for="preview-mode-select">file previews</label>
+      <select id="preview-mode-select">
+        {
+          PREVIEW_MODES.map(mode => (
+            <option value={mode.id} selected={mode.id === user.previewMode}>
+              {mode.label}
+            </option>
+          ))
+        }
+      </select>
+    </div>
+    <p class="hint">how clicking a photo/video/file opens it</p>
+  </section>
+
+  <section>
+    <h3><span class="rule">──</span> account</h3>
+
+    <div class="row">
+      <label>profile picture</label>
+      <div class="avatar-controls">
+        <div class="avatar-preview" id="avatar-preview">
+          {user.hasAvatar ? <img src={`/api/avatar?id=${user.id}`} alt="" /> : <span>{user.username.slice(0, 2).toUpperCase()}</span>}
+        </div>
+        <input type="file" id="avatar-file" accept="image/*" hidden />
+        <button class="btn" id="avatar-upload">upload</button>
+        <button class="btn subtle" id="avatar-remove" disabled={!user.hasAvatar}>remove</button>
+      </div>
+    </div>
+
+    <form id="password-form" class="stack">
+      <label for="pw-current">change password</label>
+      <input type="password" id="pw-current" placeholder="current password" autocomplete="current-password" required />
+      <input
+        type="password"
+        id="pw-new"
+        placeholder="new password (min 8 chars)"
+        autocomplete="new-password"
+        minlength="8"
+        required
+      />
+      <input type="password" id="pw-confirm" placeholder="confirm new password" autocomplete="new-password" required />
+      <div class="inline">
+        <button class="btn" type="submit">update password</button>
+        <span class="msg" id="pw-msg"></span>
+      </div>
+    </form>
+  </section>
+
+  <section id="shares-section">
+    <h3><span class="rule">──</span> share links</h3>
+
+    <label class="check show-expired">
+      <input type="checkbox" id="shares-show-expired" /> show expired
+    </label>
+
+    <div id="shares-list" class="users-list"></div>
+  </section>
+
+  {
+    user.isAdmin && (
+      <section id="users-section">
+        <h3>
+          <span class="rule">──</span> users
+        </h3>
+
+        <div id="users-list" class="users-list"></div>
+
+        <form id="create-user-form" class="stack">
+          <label for="nu-username">add user</label>
+          <div class="inline wrap-sm">
+            <input type="text" id="nu-username" placeholder="username" autocomplete="off" required />
+            <input type="password" id="nu-password" placeholder="password" autocomplete="new-password" minlength="8" required />
+            <label class="check">
+              <input type="checkbox" id="nu-admin" /> admin
+            </label>
+            <button class="btn" type="submit">create</button>
+          </div>
+          <span class="msg" id="users-msg" />
+        </form>
+      </section>
+    )
+  }
+</dialog>
+
+<script define:vars={{ currentUserId: user.id, isAdmin: user.isAdmin }}>
+  window.__currentUserId = currentUserId;
+  window.__isAdmin = isAdmin;
+</script>
+
+<script>
+  import { html, render } from "lit-html";
+  import { showToast } from "../lib/toast";
+
+  declare global {
+    interface Window {
+      __currentUserId: number;
+      __isAdmin: boolean;
+    }
+  }
+
+  const $dialog = document.getElementById("settings-dialog") as HTMLDialogElement;
+  const currentUserId = window.__currentUserId;
+  const isAdmin = window.__isAdmin;
+
+  document.getElementById("settings-close")!.addEventListener("click", () => $dialog.close());
+  // close when clicking the backdrop (the dialog element itself, not its children)
+  $dialog.addEventListener("click", e => {
+    if (e.target === $dialog) $dialog.close();
+  });
+
+  const patchMe = (body: Record<string, unknown>) =>
+    fetch("/api/me", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+  // ---- accent color ----
+
+  const $accent = document.getElementById("accent-input") as HTMLInputElement;
+
+  const applyAccent = (color: string) => {
+    document.documentElement.style.setProperty("--accent", color);
+  };
+
+  let accentTimer: ReturnType<typeof setTimeout> | undefined;
+  const saveAccent = (color: string) => {
+    applyAccent(color);
+    clearTimeout(accentTimer);
+    accentTimer = setTimeout(() => patchMe({ accentColor: color }), 250);
+  };
+
+  $accent.addEventListener("input", () => saveAccent($accent.value));
+
+  for (const swatch of document.querySelectorAll<HTMLButtonElement>(".swatch")) {
+    swatch.addEventListener("click", () => {
+      const color = swatch.dataset.color!;
+      $accent.value = color;
+      saveAccent(color);
+    });
+  }
+
+  // ---- syntax theme ----
+
+  const $theme = document.getElementById("theme-select") as HTMLSelectElement;
+  $theme.addEventListener("change", () => patchMe({ syntaxTheme: $theme.value }));
+
+  // ---- preview mode ----
+
+  const $previewMode = document.getElementById("preview-mode-select") as HTMLSelectElement;
+  $previewMode.addEventListener("change", () => {
+    // instant feedback, same as accent color - Explorer.astro applies it live
+    window.dispatchEvent(new CustomEvent("previewModeChange", { detail: $previewMode.value }));
+    patchMe({ previewMode: $previewMode.value });
+  });
+
+  // ---- avatar ----
+
+  const $avatarFile = document.getElementById("avatar-file") as HTMLInputElement;
+  const $avatarPreview = document.getElementById("avatar-preview")!;
+  const $avatarRemove = document.getElementById("avatar-remove") as HTMLButtonElement;
+  const $panelAvatar = document.getElementById("panel-avatar");
+
+  const setAvatarViews = (hasAvatar: boolean) => {
+    const src = `/api/avatar?id=${currentUserId}&t=${Date.now()}`;
+    const initials = $panelAvatar?.dataset.initials ?? "?";
+    const content = hasAvatar ? `<img src="${src}" alt="">` : `<span>${initials}</span>`;
+    $avatarPreview.innerHTML = content;
+    if ($panelAvatar) $panelAvatar.innerHTML = content;
+    $avatarRemove.disabled = !hasAvatar;
+  };
+
+  document.getElementById("avatar-upload")!.addEventListener("click", e => {
+    e.preventDefault();
+    $avatarFile.click();
+  });
+
+  $avatarFile.addEventListener("change", async () => {
+    const file = $avatarFile.files?.[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/avatar", { method: "POST", body: form });
+    if (res.ok) setAvatarViews(true);
+    $avatarFile.value = "";
+  });
+
+  $avatarRemove.addEventListener("click", async e => {
+    e.preventDefault();
+    const res = await fetch("/api/avatar", { method: "DELETE" });
+    if (res.ok) setAvatarViews(false);
+  });
+
+  // ---- change password ----
+
+  const $pwForm = document.getElementById("password-form") as HTMLFormElement;
+  const $pwCurrent = document.getElementById("pw-current") as HTMLInputElement;
+  const $pwNew = document.getElementById("pw-new") as HTMLInputElement;
+  const $pwConfirm = document.getElementById("pw-confirm") as HTMLInputElement;
+  const $pwMsg = document.getElementById("pw-msg")!;
+
+  const flash = (el: HTMLElement, text: string, ok: boolean) => {
+    el.textContent = text;
+    el.classList.toggle("ok", ok);
+    el.classList.toggle("err", !ok);
+  };
+
+  $pwForm.addEventListener("submit", async e => {
+    e.preventDefault();
+    if ($pwNew.value !== $pwConfirm.value) {
+      flash($pwMsg, "passwords do not match", false);
+      return;
+    }
+    const res = await patchMe({ currentPassword: $pwCurrent.value, newPassword: $pwNew.value });
+    if (res.ok) {
+      flash($pwMsg, "password updated", true);
+      $pwForm.reset();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      flash($pwMsg, body.error ?? "update failed", false);
+    }
+  });
+
+  // ---- share links ----
+
+  type TShareEntry = {
+    token: string;
+    path: string;
+    createdBy: number;
+    createdByUsername: string;
+    createdAt: number;
+    expiresAt: number;
+  };
+
+  const $sharesList = document.getElementById("shares-list")!;
+  const $showExpired = document.getElementById("shares-show-expired") as HTMLInputElement;
+
+  const nowS = () => Math.floor(Date.now() / 1000);
+  const isExpired = (s: TShareEntry) => s.expiresAt <= nowS();
+  const shareUrl = (token: string) => `${location.origin}/share?token=${token}`;
+
+  let sharesLoaded = false;
+  const loadShares = async () => {
+    if (!sharesLoaded) render(html`<span class="dim">loading...</span>`, $sharesList);
+    const res = await fetch(`/api/shares?includeExpired=${$showExpired.checked ? "1" : "0"}`);
+    if (!res.ok) {
+      render(html`<span class="dim">failed to load share links</span>`, $sharesList);
+      return;
+    }
+    const { shares } = (await res.json()) as { shares: TShareEntry[] };
+    sharesLoaded = true;
+    renderShares(shares);
+  };
+
+  const copyShare = async (s: TShareEntry) => {
+    try {
+      await navigator.clipboard.writeText(shareUrl(s.token));
+      showToast("link copied");
+    } catch {
+      showToast("couldn't copy link", "error");
+    }
+  };
+
+  const revokeShare = async (s: TShareEntry) => {
+    if (!confirm(`revoke the share link for "/${s.path || ""}"?`)) return;
+    const res = await fetch(`/api/shares?token=${encodeURIComponent(s.token)}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      showToast(body.error ?? "failed to revoke link", "error");
+    }
+    loadShares();
+  };
+
+  const renderShares = (shares: TShareEntry[]) => {
+    if (shares.length === 0) {
+      render(html`<span class="dim">no share links${$showExpired.checked ? "" : " (excluding expired)"}</span>`, $sharesList);
+      return;
+    }
+    render(
+      html`${shares.map(s => {
+        const expired = isExpired(s);
+        const canRevoke = s.createdBy === currentUserId || isAdmin;
+        return html`
+          <div class="share-row">
+            <div class="share-info">
+              <span class="row-name" title=${`/${s.path}`}>/${s.path || "(root)"}</span>
+              <span class="row-role"
+                >shared by ${s.createdByUsername} · ${new Date(s.createdAt * 1000).toLocaleDateString()} ·
+                ${expired
+                  ? html`<span class="expired-badge">expired</span>`
+                  : `expires ${new Date(s.expiresAt * 1000).toLocaleString()}`}</span
+              >
+            </div>
+            <div class="row-actions">
+              ${!expired ? html`<button class="mini" title="copy link" @click=${() => copyShare(s)}>copy link</button>` : ""}
+              ${canRevoke
+                ? html`<button class="mini danger" title="revoke" @click=${() => revokeShare(s)}>revoke</button>`
+                : ""}
+            </div>
+          </div>
+        `;
+      })}`,
+      $sharesList
+    );
+  };
+
+  $showExpired.addEventListener("change", loadShares);
+  window.addEventListener("settingsOpen", loadShares);
+  window.addEventListener("shareLinksChanged", loadShares);
+
+  // ---- user management (only rendered for admins) ----
+
+  const $usersList = document.getElementById("users-list");
+
+  type TUserEntry = {
+    id: number;
+    username: string;
+    isAdmin: boolean;
+    hasAvatar: boolean;
+    createdAt: number;
+  };
+
+  if ($usersList) {
+    const $createForm = document.getElementById("create-user-form") as HTMLFormElement;
+    const $nuUsername = document.getElementById("nu-username") as HTMLInputElement;
+    const $nuPassword = document.getElementById("nu-password") as HTMLInputElement;
+    const $nuAdmin = document.getElementById("nu-admin") as HTMLInputElement;
+    const $usersMsg = document.getElementById("users-msg")!;
+
+    // every state must go through lit-html's render: writing textContent directly would
+    // destroy lit's part markers and break all subsequent renders into this container
+    let loaded = false;
+    const loadUsers = async () => {
+      if (!loaded) render(html`<span class="dim">loading...</span>`, $usersList);
+      const res = await fetch("/api/users");
+      if (!res.ok) {
+        render(html`<span class="dim">failed to load users</span>`, $usersList);
+        return;
+      }
+      const { users } = (await res.json()) as { users: TUserEntry[] };
+      loaded = true;
+      renderUsers(users);
+    };
+
+    const act = async (req: Promise<Response>, okMsg: string) => {
+      const res = await req;
+      if (res.ok) {
+        flash($usersMsg, okMsg, true);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        flash($usersMsg, body.error ?? "action failed", false);
+      }
+      loadUsers();
+    };
+
+    const resetPassword = (u: TUserEntry) => {
+      const password = prompt(`new password for ${u.username} (min 8 chars):`);
+      if (!password) return;
+      act(
+        fetch("/api/users", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: u.id, password })
+        }),
+        `password reset for ${u.username}`
+      );
+    };
+
+    const toggleAdmin = (u: TUserEntry) => {
+      if (!confirm(`${u.isAdmin ? "revoke" : "grant"} admin for ${u.username}?`)) return;
+      act(
+        fetch("/api/users", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: u.id, isAdmin: !u.isAdmin })
+        }),
+        `${u.username} is ${u.isAdmin ? "no longer" : "now"} an admin`
+      );
+    };
+
+    const deleteUser = (u: TUserEntry) => {
+      if (!confirm(`delete ${u.username}? this cannot be undone.`)) return;
+      act(fetch(`/api/users?id=${u.id}`, { method: "DELETE" }), `deleted ${u.username}`);
+    };
+
+    const renderUsers = (users: TUserEntry[]) => {
+      render(
+        html`${users.map(u => {
+          const isSelf = u.id === currentUserId;
+          return html`
+            <div class="user-row">
+              <div class="row-avatar">
+                ${u.hasAvatar
+                  ? html`<img src=${`/api/avatar?id=${u.id}&t=${Date.now()}`} alt="" />`
+                  : html`<span>${u.username.slice(0, 2).toUpperCase()}</span>`}
+              </div>
+              <span class="row-name" title=${u.username}>${u.username}${isSelf ? " (you)" : ""}</span>
+              <span class="row-role">${u.isAdmin ? "admin" : "member"}</span>
+              <div class="row-actions">
+                <button class="mini" title="reset password" @click=${() => resetPassword(u)}>reset pw</button>
+                <button class="mini" title="toggle admin" ?disabled=${isSelf} @click=${() => toggleAdmin(u)}>
+                  ${u.isAdmin ? "demote" : "promote"}
+                </button>
+                <button class="mini danger" title="delete user" ?disabled=${isSelf} @click=${() => deleteUser(u)}>
+                  delete
+                </button>
+              </div>
+            </div>
+          `;
+        })}`,
+        $usersList
+      );
+    };
+
+    $createForm.addEventListener("submit", e => {
+      e.preventDefault();
+      act(
+        fetch("/api/users", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            username: $nuUsername.value,
+            password: $nuPassword.value,
+            isAdmin: $nuAdmin.checked
+          })
+        }),
+        `created ${$nuUsername.value}`
+      ).then(() => $createForm.reset());
+    });
+
+    window.addEventListener("settingsOpen", loadUsers);
+  }
+</script>
+
+<style>
+  #settings-dialog {
+    width: min(560px, 92vw);
+    max-height: 85vh;
+    background-color: var(--secondary);
+    color: white;
+    border: var(--accent) 1px solid;
+    padding: 20px 24px;
+    font-family: inherit;
+  }
+
+  #settings-dialog::backdrop {
+    background-color: rgba(0, 0, 0, 0.6);
+  }
+
+  .dialog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .dialog-head h2 {
+    margin: 0;
+    color: var(--accent);
+  }
+
+  .close-btn {
+    background: none;
+    border: none;
+    color: lightgray;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .close-btn:hover {
+    color: white;
+    background-color: var(--tertiary);
+  }
+
+  section {
+    margin-top: 18px;
+  }
+
+  h3 {
+    margin: 0 0 12px;
+  }
+
+  .rule {
+    color: var(--accent);
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+  }
+
+  .row > label {
+    color: lightgray;
+  }
+
+  .accent-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  input[type="color"] {
+    width: 42px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--tertiary);
+    background: none;
+    cursor: pointer;
+  }
+
+  .swatch {
+    width: 18px;
+    height: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .swatch:hover {
+    transform: scale(1.15);
+  }
+
+  select,
+  input[type="text"],
+  input[type="password"] {
+    background-color: var(--primary);
+    color: white;
+    border: 1px solid var(--tertiary);
+    padding: 7px 9px;
+    font-family: inherit;
+    outline: none;
+  }
+
+  select:focus,
+  input[type="text"]:focus,
+  input[type="password"]:focus {
+    border-color: var(--accent);
+  }
+
+  .hint {
+    color: darkgray;
+    margin: 4px 0 0;
+    font-size: 0.85em;
+  }
+
+  .avatar-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .avatar-preview {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    overflow: hidden;
+    background-color: var(--accent);
+    color: var(--primary);
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+  }
+
+  .avatar-preview :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .stack > label {
+    color: lightgray;
+  }
+
+  .inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .wrap-sm {
+    flex-wrap: wrap;
+  }
+
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: lightgray;
+  }
+
+  .btn {
+    background-color: var(--accent);
+    color: var(--primary);
+    border: none;
+    padding: 7px 12px;
+    font-family: inherit;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn.subtle {
+    background-color: var(--tertiary);
+    color: lightgray;
+  }
+
+  .users-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 240px;
+    overflow-y: auto;
+    color: darkgray;
+  }
+
+  .show-expired {
+    margin: 4px 0 10px;
+  }
+</style>
+
+<style is:global>
+  /* user rows are rendered client-side via lit-html, so these rules must stay unscoped */
+  #settings-dialog .user-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    background-color: var(--primary);
+    color: white;
+  }
+
+  #settings-dialog .row-avatar {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    background-color: var(--tertiary);
+    color: lightgray;
+    font-size: 10px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #settings-dialog .row-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  #settings-dialog .row-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #settings-dialog .row-role {
+    color: darkgray;
+    font-size: 0.85em;
+  }
+
+  #settings-dialog .row-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  #settings-dialog .share-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 8px;
+    background-color: var(--primary);
+    color: white;
+  }
+
+  #settings-dialog .share-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  #settings-dialog .share-info .row-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #settings-dialog .expired-badge {
+    color: #ff6b81;
+  }
+
+  #settings-dialog .mini {
+    background-color: var(--tertiary);
+    color: lightgray;
+    border: none;
+    padding: 3px 7px;
+    font-family: inherit;
+    font-size: 0.8em;
+    cursor: pointer;
+  }
+
+  #settings-dialog .mini:hover:not(:disabled) {
+    color: white;
+  }
+
+  #settings-dialog .mini:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  #settings-dialog .mini.danger:hover:not(:disabled) {
+    background-color: #7f1d2b;
+    color: white;
+  }
+
+  #settings-dialog .dim {
+    color: darkgray;
+  }
+
+  #settings-dialog .msg {
+    font-size: 0.85em;
+  }
+
+  #settings-dialog .msg.ok {
+    color: var(--accent);
+  }
+
+  #settings-dialog .msg.err {
+    color: #ff6b81;
+  }
+</style>

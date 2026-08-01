@@ -1,0 +1,123 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="Sign in - Technobowser">
+  <div class="wrap">
+    <form class="card" id="login-form" autocomplete="on">
+      <h2><span class="accent">techno</span>bowser</h2>
+      <p class="sub">sign in to continue</p>
+
+      <label for="username">username</label>
+      <input id="username" name="username" type="text" autocomplete="username" required autofocus />
+
+      <label for="password">password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+
+      <div class="error" id="error" hidden></div>
+
+      <button type="submit" id="submit">sign in</button>
+    </form>
+  </div>
+</Layout>
+
+<script>
+  const $form = document.getElementById("login-form") as HTMLFormElement;
+  const $error = document.getElementById("error")!;
+  const $submit = document.getElementById("submit") as HTMLButtonElement;
+
+  $form.addEventListener("submit", async e => {
+    e.preventDefault();
+    $error.hidden = true;
+    $submit.disabled = true;
+    $submit.textContent = "signing in...";
+
+    const data = new FormData($form);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: data.get("username"), password: data.get("password") })
+      });
+      if (res.ok) {
+        location.href = "/";
+        return;
+      }
+      const body = await res.json().catch(() => ({}));
+      $error.textContent = body.error ?? "sign in failed";
+      $error.hidden = false;
+    } catch {
+      $error.textContent = "network error - is the server up?";
+      $error.hidden = false;
+    }
+    $submit.disabled = false;
+    $submit.textContent = "sign in";
+  });
+</script>
+
+<style>
+  .wrap {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .card {
+    width: min(360px, 90vw);
+    background-color: var(--secondary);
+    border: var(--accent) 1px solid;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  h2 {
+    margin: 0;
+  }
+
+  .sub {
+    color: darkgray;
+    margin: 0 0 16px;
+  }
+
+  label {
+    color: lightgray;
+    margin-top: 8px;
+  }
+
+  input {
+    background-color: var(--primary);
+    color: white;
+    border: 1px solid var(--tertiary);
+    padding: 8px 10px;
+    font-family: inherit;
+    outline: none;
+  }
+
+  input:focus {
+    border-color: var(--accent);
+  }
+
+  button {
+    margin-top: 16px;
+    padding: 9px;
+    font-family: inherit;
+    font-weight: bold;
+    background-color: var(--accent);
+    color: var(--primary);
+    border: none;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+
+  .error {
+    margin-top: 10px;
+    color: #ff6b81;
+  }
+</style>

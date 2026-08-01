@@ -1,0 +1,376 @@
+/* custom media player (pw-player) - see player.ts; styled after the app's flat
+   panel + accent border look, driven by the same css vars as the rest of the ui */
+
+pw-player {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: monospace;
+  color: white;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+pw-player video,
+pw-player .pw-canvas {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+  background: transparent;
+}
+
+pw-player .pw-canvas {
+  display: none;
+}
+
+/* decode/render fallback (see lib/player.ts initFallback) draws to canvas instead of video */
+pw-player[data-engine="fallback"] video {
+  display: none;
+}
+
+pw-player[data-engine="fallback"] .pw-canvas {
+  display: block;
+}
+
+pw-player[data-engine="fallback"][mode="audio"] .pw-canvas {
+  display: none;
+}
+
+pw-player[mode="video"].pw-hide {
+  cursor: none;
+}
+
+/* audio layout: cover art card instead of a video surface - applies to both the fancybox
+   slide box and the preview panel's [data-pw-box] wrapper */
+.has-html5video .f-html.pw-audio-box,
+[data-pw-box].pw-audio-box {
+  width: min(540px, 100%);
+  height: auto;
+  aspect-ratio: auto;
+  background: var(--secondary, #1b1d23);
+  border: 1px solid var(--accent, #00ffc1);
+}
+
+pw-player[mode="audio"] video {
+  display: none;
+}
+
+pw-player .pw-art {
+  display: none;
+}
+
+pw-player[mode="audio"] .pw-art {
+  display: block;
+  width: 100%;
+  height: 300px;
+  object-fit: contain;
+  padding: 20px;
+}
+
+/* center overlay: big state icon (paused/replay) and loading spinner */
+pw-player .pw-state {
+  position: absolute;
+  top: calc(50% - 32px);
+  left: calc(50% - 32px);
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(16, 18, 21, 0.85);
+  border: 1px solid var(--accent, #00ffc1);
+  color: var(--accent, #00ffc1);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+pw-player .pw-state svg {
+  width: 32px;
+  height: 32px;
+}
+
+pw-player.pw-paused .pw-state,
+pw-player.pw-ended .pw-state {
+  opacity: 1;
+}
+
+pw-player[mode="audio"] .pw-state {
+  display: none;
+}
+
+pw-player .pw-spin {
+  position: absolute;
+  top: calc(50% - 18px);
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--tertiary, #2c303a);
+  border-top-color: var(--accent, #00ffc1);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+pw-player.pw-waiting .pw-spin {
+  opacity: 1;
+  animation: pw-spin 0.8s linear infinite;
+}
+
+@keyframes pw-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+pw-player .pw-error {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  color: darkgray;
+  font-size: 13px;
+}
+
+pw-player.pw-failed .pw-error {
+  display: flex;
+}
+
+/* control bar */
+pw-player .pw-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  background: rgba(16, 18, 21, 0.92);
+  border-top: 1px solid var(--accent, #00ffc1);
+  transition: opacity 0.2s;
+}
+
+pw-player[mode="video"] .pw-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+pw-player[mode="video"].pw-hide .pw-bar {
+  opacity: 0;
+  pointer-events: none;
+}
+
+pw-player .pw-bar button {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: white;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+pw-player .pw-bar button:hover {
+  color: var(--accent, #00ffc1);
+  border-color: var(--tertiary, #2c303a);
+}
+
+pw-player .pw-bar button svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+pw-player .pw-time {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: darkgray;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+pw-player .pw-time .pw-cur {
+  color: white;
+}
+
+/* seek bar */
+pw-player .pw-seek {
+  position: relative;
+  flex: 1;
+  height: 22px;
+  min-width: 40px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+pw-player .pw-seek::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 9px;
+  height: 4px;
+  background: var(--tertiary, #2c303a);
+}
+
+pw-player .pw-buf,
+pw-player .pw-fill {
+  position: absolute;
+  left: 0;
+  top: 9px;
+  height: 4px;
+  width: 0;
+  pointer-events: none;
+}
+
+pw-player .pw-buf {
+  background: #454c5c;
+}
+
+pw-player .pw-fill {
+  background: var(--accent, #00ffc1);
+}
+
+pw-player .pw-thumb {
+  position: absolute;
+  top: 6px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  background: var(--accent, #00ffc1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s;
+}
+
+pw-player .pw-seek:hover .pw-thumb,
+pw-player.pw-seeking .pw-thumb {
+  opacity: 1;
+}
+
+pw-player .pw-tip {
+  position: absolute;
+  bottom: 24px;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  background: var(--secondary, #1b1d23);
+  border: 1px solid var(--accent, #00ffc1);
+  color: white;
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+}
+
+pw-player .pw-seek:hover .pw-tip,
+pw-player.pw-seeking .pw-tip {
+  opacity: 1;
+}
+
+/* volume */
+pw-player .pw-volwrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+pw-player .pw-vol {
+  width: 0;
+  opacity: 0;
+  transition:
+    width 0.15s,
+    opacity 0.15s;
+  appearance: none;
+  -webkit-appearance: none;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+pw-player .pw-volwrap:hover .pw-vol,
+pw-player .pw-vol:focus-visible {
+  width: 64px;
+  opacity: 1;
+}
+
+pw-player .pw-vol::-webkit-slider-runnable-track {
+  height: 4px;
+  background: var(--tertiary, #2c303a);
+}
+
+pw-player .pw-vol::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  margin-top: -3px;
+  background: var(--accent, #00ffc1);
+  border: none;
+  border-radius: 0;
+}
+
+pw-player .pw-vol::-moz-range-track {
+  height: 4px;
+  background: var(--tertiary, #2c303a);
+}
+
+pw-player .pw-vol::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  background: var(--accent, #00ffc1);
+  border: none;
+  border-radius: 0;
+}
+
+/* playback speed menu */
+pw-player .pw-speedwrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+pw-player .pw-speed {
+  width: 44px;
+}
+
+pw-player .pw-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: 30px;
+  flex-direction: column;
+  background: var(--secondary, #1b1d23);
+  border: 1px solid var(--accent, #00ffc1);
+}
+
+pw-player .pw-menu.pw-open {
+  display: flex;
+}
+
+pw-player .pw-menu button {
+  width: 64px;
+  height: 26px;
+  justify-content: center;
+}
+
+pw-player .pw-menu button.pw-active {
+  color: var(--accent, #00ffc1);
+}
+
+pw-player:fullscreen {
+  background: black;
+}
+
+pw-player:fullscreen video,
+pw-player:fullscreen .pw-canvas {
+  height: 100%;
+}

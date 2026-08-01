@@ -1,0 +1,185 @@
+---
+import { PHOTOS_DIR, listDir } from "../lib/media";
+import UserPanel from "./UserPanel.astro";
+
+const { dirs: rootDirs } = await listDir(PHOTOS_DIR, "");
+---
+
+<div class="sidebar">
+  <div class="tree" id="tree"></div>
+  <UserPanel />
+</div>
+
+<script define:vars={{ rootDirs }}>
+  window.__rootDirs = rootDirs;
+</script>
+
+<script>
+  import { getCurrentPath } from "../lib/path";
+  import { html, render } from "lit-html";
+  import { openContextMenu } from "../lib/contextMenu";
+  import { folderContextMenuItems } from "../lib/folderActions";
+
+  declare global {
+    interface Window {
+      __rootDirs: string[];
+    }
+  }
+
+  const $tree = document.getElementById("tree")!;
+
+  // path key ("" for root, else "a/b/c") -> child dir names, null while loading
+  const cache = new Map<string, string[] | null>();
+  const expanded = new Set<string>();
+
+  cache.set("", window.__rootDirs);
+
+  const fetchDirs = async (key: string): Promise<string[]> => {
+    const res = await fetch(`/api/list?path=${encodeURIComponent(key)}`);
+    if (!res.ok) return [];
+    return (await res.json()).dirs;
+  };
+
+  const load = async (key: string) => {
+    cache.set(key, null);
+    renderTree();
+    cache.set(key, await fetchDirs(key));
+    renderTree();
+  };
+
+  const onToggle = (key: string, isOpen: boolean) => {
+    if (isOpen) {
+      expanded.add(key);
+      if (!cache.has(key)) load(key);
+    } else {
+      expanded.delete(key);
+    }
+  };
+
+  const renderChildren = (path: string[], pre: string): unknown => {
+    const dirs = cache.get(path.join("/"));
+    if (dirs === undefined) return null;
+    if (dirs === null) return html`<div class="loading"><span class="pre">${pre}</span>loading...</div>`;
+
+    return dirs.map((name, index) => {
+      const childPath = [...path, name];
+      const childKey = childPath.join("/");
+      const isLast = index === dirs.length - 1;
+      const isExpanded = expanded.has(childKey);
+      const childPre = pre + (isLast ? "   " : "│  ");
+
+      return html`
+        <details ?open=${isExpanded} @toggle=${(e: Event) => onToggle(childKey, (e.target as HTMLDetailsElement).open)}>
+          <summary>
+            <span class="pre">${pre}${isLast ? "└" : "├"}─ </span
+            ><a
+              class="dir"
+              href=${`#${childKey}`}
+              title=${name.trim()}
+              @contextmenu=${(e: MouseEvent) => {
+                e.preventDefault();
+                openContextMenu(e.clientX, e.clientY, folderContextMenuItems(childPath));
+              }}
+              >${name.trim()}</a
+            ></summary>
+          ${isExpanded ? renderChildren(childPath, childPre) : ""}
+        </details>
+      `;
+    });
+  };
+
+  const updateActive = () => {
+    for (const active of $tree.querySelectorAll(".dir.active")) active.classList.remove("active");
+    $tree.querySelector(`.dir[href="#${getCurrentPath().join("/")}"]`)?.classList.add("active");
+  };
+
+  const renderTree = () => {
+    render(renderChildren([], ""), $tree);
+    updateActive();
+  };
+
+  // lazily expand every ancestor of the current path so the active item is always visible
+  const ensureExpanded = async (path: string[]) => {
+    const acc: string[] = [];
+    for (const seg of path) {
+      acc.push(seg);
+      const key = acc.join("/");
+      expanded.add(key);
+      if (!cache.has(key)) await load(key);
+    }
+    renderTree();
+  };
+
+  window.addEventListener("pathUpdate", () => ensureExpanded(getCurrentPath()));
+  renderTree();
+  ensureExpanded(getCurrentPath());
+</script>
+
+<style>
+  .sidebar {
+    height: 100%;
+    float: left;
+    width: 320px;
+    gap: 10px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tree {
+    background-color: var(--secondary);
+    padding: 10px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: scroll;
+    overflow-x: hidden;
+    white-space: nowrap;
+    border: var(--accent) 1px solid;
+  }
+
+  @media screen and (max-width: 600px) {
+    .sidebar {
+      display: none;
+    }
+  }
+</style>
+
+<style is:global>
+  /* the tree contents are rendered client-side via lit-html, so these rules target
+     elements Astro never sees at compile time - they must stay unscoped to apply */
+  .tree details {
+    margin: 0;
+  }
+
+  .tree summary {
+    display: block;
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .tree summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .tree summary::marker {
+    content: "";
+  }
+
+  .tree .pre,
+  .tree .loading {
+    white-space: pre;
+    color: darkgray;
+  }
+
+  .tree .dir {
+    color: white;
+    text-decoration: none;
+  }
+
+  .tree .dir:hover {
+    background-color: rgba(169, 169, 169, 0.5);
+  }
+
+  .tree .dir.active {
+    color: var(--accent);
+  }
+</style>

@@ -1,0 +1,28 @@
+---
+import Explorer from "../components/Explorer.astro";
+import PreviewPanel from "../components/PreviewPanel.astro";
+import ShareDialog from "../components/ShareDialog.astro";
+import Sidebar from "../components/Sidebar.astro";
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="Technobowser">
+  <div class="container">
+    <Sidebar />
+    <Explorer />
+    <PreviewPanel />
+  </div>
+  <ShareDialog />
+</Layout>
+
+<style>
+  .container {
+    display: flex;
+    height: 100%;
+    gap: 10px;
+  }
+</style>
+
+<script>
+  import "../lib/path";
+</script>

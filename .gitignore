@@ -1,0 +1,27 @@
+# build output
+dist/
+# generated types
+.astro/
+# generated thumbnail cache
+.thumbs/
+# sqlite database (users, sessions)
+/data/
+# default local PHOTOS_DIR (see .env.example) - don't commit personal media
+/photos/
+
+# dependencies
+node_modules/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+
+# environment variables
+.env
+.env.production
+
+# macOS-specific files
+.DS_Store

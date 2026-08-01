@@ -1,0 +1,564 @@
+---
+const previewMode = Astro.locals.user?.previewMode ?? "panel";
+---
+
+<div class="container">
+  <div class="topbar">
+    <div id="path"></div>
+    <div id="toolbar">
+      <select id="sort" title="sort by">
+        <option value="name">name</option>
+        <option value="mtime">date</option>
+        <option value="size">size</option>
+      </select>
+      <button id="order" title="sort order">↑</button>
+      <span class="sep"></span>
+      <input type="range" id="zoom" title="zoom" min="50" max="150" step="5" />
+      <span class="sep"></span>
+      <button id="view-grid" title="grid view">▦</button>
+      <button id="view-list" title="list view">☰</button>
+    </div>
+  </div>
+  <div id="explorer"></div>
+</div>
+
+<script define:vars={{ previewMode }}>
+  window.__previewMode = previewMode;
+</script>
+
+<script>
+  import { getCurrentPath } from "../lib/path";
+  import { html, nothing, render } from "lit-html";
+  import { getMediaUrls } from "../lib/mediaUrls";
+  import { humanDate, humanSize } from "../lib/format";
+  import { closePreview, openPreview, getPreviewItem } from "../lib/previewState";
+  import { openContextMenu } from "../lib/contextMenu";
+  import { fileContextMenuItems, folderContextMenuItems } from "../lib/folderActions";
+  import "../lib/player";
+
+  // fancybox (js + css) is only needed in lightbox mode - dynamically imported so panel-mode
+  // users aren't stuck downloading/parsing ~90kb of carousel/toolbar code they'll never use
+  type TFancyboxModule = typeof import("@fancyapps/ui");
+  type TFancybox = TFancyboxModule["Fancybox"];
+
+  let Fancybox: TFancybox | undefined;
+  let fancyboxPromise: Promise<TFancybox> | undefined;
+  const ensureFancybox = (): Promise<TFancybox> =>
+    (fancyboxPromise ??= Promise.all([
+      import("@fancyapps/ui"),
+      import("@fancyapps/ui/dist/fancybox/fancybox.css")
+    ]).then(([mod]) => (Fancybox = mod.Fancybox)));
+
+  declare global {
+    interface Window {
+      __previewMode?: string;
+    }
+  }
+
+  const $path = document.getElementById("path")!;
+  const $explorer = document.getElementById("explorer")!;
+  const $sort = document.getElementById("sort") as HTMLSelectElement;
+  const $order = document.getElementById("order")!;
+  const $viewGrid = document.getElementById("view-grid")!;
+  const $viewList = document.getElementById("view-list")!;
+  const $zoom = document.getElementById("zoom") as HTMLInputElement;
+
+  type TFileEntry = { name: string; size: number; mtime: number };
+  type TListing = { dirs: string[]; files: TFileEntry[] };
+
+  type TSortKey = "name" | "mtime" | "size";
+  let sortKey = (localStorage.getItem("explorer:sort") ?? "name") as TSortKey;
+  let sortAsc = (localStorage.getItem("explorer:asc") ?? "1") === "1";
+  let view = localStorage.getItem("explorer:view") === "list" ? "list" : "grid";
+  let previewMode = window.__previewMode === "lightbox" ? "lightbox" : "panel";
+
+  // grid tile size as a % of the original 160x200 tile / 120px thumb (100%) - default sits
+  // ~25% smaller so more fits on screen without feeling cramped
+  const ZOOM_MIN = 50;
+  const ZOOM_MAX = 150;
+  const ZOOM_DEFAULT = 75;
+  const ZOOM_SNAP_POINTS = [50, 75, 100, 125, 150];
+  const ZOOM_SNAP_THRESHOLD = 2;
+
+  const clampZoom = (value: number): number => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
+  const snapZoom = (value: number): number => ZOOM_SNAP_POINTS.find(p => Math.abs(p - value) <= ZOOM_SNAP_THRESHOLD) ?? value;
+
+  let zoom = clampZoom(Number(localStorage.getItem("explorer:zoom")) || ZOOM_DEFAULT);
+
+  let listing: TListing | null = null;
+
+  const applyZoom = () => $explorer.style.setProperty("--zoom", String(zoom / 100));
+
+  const syncToolbar = () => {
+    $sort.value = sortKey;
+    $order.textContent = sortAsc ? "↑" : "↓";
+    $order.title = sortAsc ? "ascending" : "descending";
+    $viewGrid.classList.toggle("active", view === "grid");
+    $viewList.classList.toggle("active", view === "list");
+    $zoom.value = String(zoom);
+    $zoom.title = `zoom: ${zoom}%`;
+    // list view rows have a fixed-size icon, so zoom has nothing to do there
+    $zoom.hidden = view === "list";
+  };
+
+  const renderExplorer = () => {
+    if (!listing) return;
+    const currentPath = getCurrentPath();
+    $explorer.classList.toggle("list", view === "list");
+
+    const flip = sortAsc ? 1 : -1;
+
+    // dirs only have a name, so they always sort by it - just follow the order toggle
+    const dirs = [...listing.dirs].sort((a, b) => flip * a.localeCompare(b));
+    const files = [...listing.files].sort((a, b) => {
+      const cmp = sortKey === "name" ? a.name.localeCompare(b.name) : a[sortKey] - b[sortKey];
+      return flip * (cmp || a.name.localeCompare(b.name));
+    });
+
+    const itemEls = [];
+
+    for (const dir of dirs) {
+      const dirPath = [...currentPath, dir];
+      itemEls.push(
+        html`<a
+          class="item dir"
+          href="#${dirPath.join("/")}"
+          @contextmenu=${(e: MouseEvent) => {
+            e.preventDefault();
+            openContextMenu(e.clientX, e.clientY, folderContextMenuItems(dirPath));
+          }}
+        >
+          <img src="/folder.svg" alt="folder" class="thumb" width="120" height="120" />
+          <div class="name">${dir}</div>
+        </a>`
+      );
+    }
+
+    // previewable (non-"unknown") files in display order - mirrors the fancybox gallery
+    // grouping, and doubles as the side panel's prev/next order
+    const previewFiles: TFileEntry[] = [];
+
+    for (const file of files) {
+      const { key, kind, fileUrl, thumbUrl, viewUrl, isCode, isPdf, indirect } = getMediaUrls(currentPath, file);
+
+      // no preview possible - plain download link instead of a lightbox item
+      if (kind === "unknown") {
+        itemEls.push(
+          html`<a
+            class="item"
+            href="${fileUrl}"
+            download="${file.name}"
+            @contextmenu=${(e: MouseEvent) => {
+              e.preventDefault();
+              openContextMenu(e.clientX, e.clientY, fileContextMenuItems(currentPath, file));
+            }}
+          >
+            <img src="${thumbUrl}" class="thumb" alt="file icon" width="120" height="120" />
+            <div class="name">${file.name}</div>
+            <div class="meta">${humanSize(file.size)}</div>
+            <div class="meta">${humanDate(file.mtime)}</div>
+          </a>`
+        );
+        continue;
+      }
+
+      // fancybox can't auto-detect these content types from our api urls - it guesses from
+      // the href, and extensions like .mkv aren't in its own video-type list, so it'd
+      // otherwise fall back to treating the item as an image
+      const fancyboxType = isCode || isPdf ? "iframe" : kind === "audio" || kind === "video" ? "html5video" : nothing;
+
+      const previewIndex = previewFiles.length;
+      previewFiles.push(file);
+
+      itemEls.push(
+        html`<a
+          class="item"
+          data-key="${key}"
+          data-fancybox="gallery"
+          href="${viewUrl}"
+          data-type="${fancyboxType}"
+          data-poster="${kind === "audio" ? thumbUrl : nothing}"
+          data-aspect-ratio="${kind === "audio" ? "1/1" : nothing}"
+          data-width="${kind === "audio" ? "500" : nothing}"
+          data-caption="${file.name}"
+          data-download-src="${indirect ? fileUrl : nothing}"
+          data-download-filename="${indirect ? file.name : nothing}"
+          @click=${(e: MouseEvent) => {
+            // lightbox mode: let fancybox (bound below) handle the click as normal
+            if (previewMode !== "panel") return;
+            e.preventDefault();
+            openPreview({ currentPath, files: previewFiles, index: previewIndex });
+          }}
+          @contextmenu=${(e: MouseEvent) => {
+            e.preventDefault();
+            openContextMenu(e.clientX, e.clientY, fileContextMenuItems(currentPath, file));
+          }}
+        >
+          <img src="${thumbUrl}" data-src="${viewUrl}" class="thumb" alt="thumbnail" width="120" height="120" />
+          <div class="name">${file.name}</div>
+          <div class="meta">${humanSize(file.size)}</div>
+          <div class="meta">${humanDate(file.mtime)}</div>
+        </a>`
+      );
+    }
+
+    render(itemEls, $explorer);
+    syncPreviewHighlight();
+
+    if (previewMode === "panel") {
+      // if fancybox was loaded during an earlier lightbox period, drop its bindings
+      Fancybox?.unbind("#explorer > [data-fancybox]");
+      return;
+    }
+
+    void ensureFancybox().then(FancyboxRef => {
+      // previewMode may have changed while the import was in flight, or renderExplorer may
+      // have run again since - unbind+bind together (rather than relying on the unconditional
+      // unbind this used to do up front) so any stale/overlapping calls still converge on
+      // exactly one set of bindings instead of stacking duplicates
+      if (previewMode === "panel") return;
+      FancyboxRef.unbind("#explorer > [data-fancybox]");
+      FancyboxRef.bind("#explorer > [data-fancybox]", {
+        Hash: false,
+        Carousel: {
+          Toolbar: {
+            display: {
+              left: ["infobar"],
+              middle: [],
+              right: ["download", "iterateZoom", "slideshow", "fullscreen", "thumbs", "close"]
+            }
+          },
+          Video: {
+            // custom player element (lib/player.ts) instead of a bare <video controls>;
+            // it renders its own <source> without a type attr so .mov files still play
+            html5videoTpl: '<pw-player class="f-html5video" data-src="{{src}}" data-poster="{{poster}}"></pw-player>'
+          }
+        }
+      });
+    });
+  };
+
+  const onUpdate = async () => {
+    // a stale panel item from the previous folder makes no sense once the path changes
+    closePreview();
+
+    const currentPath = getCurrentPath();
+    const pathEls = [html`<a class="seg" href="#">home</a><span class="div">/</span>`];
+
+    let segIndex = 0;
+    for (const seg of currentPath) {
+      const path = [...currentPath.slice(0, segIndex++), seg].join("/");
+      pathEls.push(html`<a class="seg" href="#${path}">${seg.trim()}</a><span class="div">/</span>`);
+    }
+    render(pathEls, $path);
+
+    const res = await fetch(`/api/list?path=${encodeURIComponent(currentPath.join("/"))}`);
+    if (!res.ok) {
+      listing = null;
+      render(`folder "${currentPath.at(-1) ?? ""}" not found`, $explorer);
+      return;
+    }
+    listing = await res.json();
+    renderExplorer();
+  };
+
+  $sort.addEventListener("change", () => {
+    sortKey = $sort.value as TSortKey;
+    localStorage.setItem("explorer:sort", sortKey);
+    syncToolbar();
+    renderExplorer();
+  });
+
+  $order.addEventListener("click", () => {
+    sortAsc = !sortAsc;
+    localStorage.setItem("explorer:asc", sortAsc ? "1" : "0");
+    syncToolbar();
+    renderExplorer();
+  });
+
+  const setView = (next: string) => {
+    view = next;
+    localStorage.setItem("explorer:view", view);
+    syncToolbar();
+    renderExplorer();
+  };
+  $viewGrid.addEventListener("click", () => setView("grid"));
+  $viewList.addEventListener("click", () => setView("list"));
+
+  const setZoom = (next: number) => {
+    zoom = clampZoom(next);
+    $zoom.value = String(zoom);
+    $zoom.title = `zoom: ${zoom}%`;
+    localStorage.setItem("explorer:zoom", String(zoom));
+    applyZoom();
+  };
+
+  $zoom.addEventListener("input", () => setZoom(snapZoom(Number($zoom.value))));
+  $zoom.addEventListener("dblclick", () => setZoom(ZOOM_DEFAULT));
+
+  // settings dialog dispatches this for instant feedback, same as accent color/syntax theme
+  window.addEventListener("previewModeChange", (e: Event) => {
+    previewMode = (e as CustomEvent<string>).detail === "panel" ? "panel" : "lightbox";
+    closePreview();
+    renderExplorer();
+  });
+
+  // keep the clicked/open grid item visually anchored across the reflow caused by the panel
+  // reserving or releasing its column of width (#explorer's available width - and therefore
+  // how many columns it wraps into - changes only on an open<->close transition; navigating
+  // prev/next while the panel stays open doesn't touch the grid's width at all)
+  const keyOf = (item: { currentPath: string[]; files: TFileEntry[]; index: number }): string =>
+    [...item.currentPath, item.files[item.index].name].join("/");
+
+  const findItemEl = (key: string): HTMLElement | undefined => {
+    for (const el of $explorer.querySelectorAll<HTMLElement>(".item[data-key]")) {
+      if (el.dataset.key === key) return el;
+    }
+    return undefined;
+  };
+
+  // outlines whichever grid item corresponds to the currently open panel item - called both
+  // after every grid re-render (renderExplorer replaces the actual dom nodes, so any class
+  // set directly on them is lost) and on every previewChange (open/close/step)
+  const syncPreviewHighlight = () => {
+    const item = getPreviewItem();
+    const activeKey = item ? keyOf(item) : null;
+    for (const el of $explorer.querySelectorAll<HTMLElement>(".item.previewing")) {
+      if (el.dataset.key !== activeKey) el.classList.remove("previewing");
+    }
+    if (activeKey) findItemEl(activeKey)?.classList.add("previewing");
+  };
+
+  let anchorKey: string | null = null;
+
+  window.addEventListener("previewChange", () => {
+    const item = getPreviewItem();
+    const activeKey = item ? keyOf(item) : null;
+    const wasOpen = anchorKey !== null;
+    const isOpen = activeKey !== null;
+
+    if (wasOpen !== isOpen) {
+      // open<->close transition: #explorer's available width changes (see comment above),
+      // reflowing the grid - keep whichever item is the anchor visually in the same place
+      const key = activeKey ?? anchorKey;
+      const before = key ? findItemEl(key)?.getBoundingClientRect().top : undefined;
+      if (key && before !== undefined) {
+        // defer to the next frame: the panel's own previewChange listener (which actually
+        // resizes it) hasn't necessarily run yet at this point - by rAF time it has, and the
+        // reflow it caused is measurable, but the browser hasn't painted it yet either
+        requestAnimationFrame(() => {
+          const after = findItemEl(key)?.getBoundingClientRect().top;
+          if (after !== undefined) $explorer.scrollTop += after - before;
+        });
+      }
+    } else if (isOpen && activeKey !== anchorKey) {
+      // stepping to a different file while the panel stays open - no reflow to compensate
+      // for, just make sure the newly-active item is actually in view
+      findItemEl(activeKey!)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+
+    syncPreviewHighlight();
+    anchorKey = activeKey;
+  });
+
+  applyZoom();
+  syncToolbar();
+  window.addEventListener("pathUpdate", onUpdate);
+  onUpdate();
+</script>
+
+<style>
+  .container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 16px;
+    width: 100%;
+  }
+
+  .topbar {
+    display: flex;
+    gap: 10px;
+  }
+
+  #path,
+  #toolbar,
+  #explorer {
+    background-color: var(--secondary);
+    border: var(--accent) 1px solid;
+    padding: 10px;
+  }
+
+  #path {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+  }
+
+  #toolbar select,
+  #toolbar button {
+    background-color: var(--tertiary);
+    color: white;
+    border: 1px solid var(--tertiary);
+    font-family: inherit;
+    font-size: 14px;
+    padding: 3px 6px;
+    cursor: pointer;
+  }
+
+  #toolbar select:hover,
+  #toolbar button:hover {
+    border-color: var(--accent);
+  }
+
+  #toolbar input[type="range"] {
+    width: 70px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  #toolbar button.active {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  #toolbar .sep {
+    width: 1px;
+    align-self: stretch;
+    margin: 2px 5px;
+    background-color: var(--tertiary);
+  }
+
+  #explorer {
+    display: grid;
+    /* uniform columns (a real grid, same width on every row) that always stretch to fill
+       the container's width exactly - never below the zoomed tile size, never leaving a
+       ragged margin on the right */
+    grid-template-columns: repeat(auto-fill, minmax(calc(160px * var(--zoom, 0.75)), 1fr));
+    align-content: start;
+    gap: 10px;
+    height: 100%;
+    border: var(--accent) 1px solid;
+    overflow-y: scroll;
+  }
+
+  #explorer.list {
+    display: flex;
+    flex-direction: column;
+  }
+
+</style>
+
+<style is:global>
+  /* fancybox's own css is loaded dynamically alongside its js (see ensureFancybox above) -
+     not statically imported here, so panel-mode users don't pay for it either */
+
+  #path .seg {
+    color: white;
+    text-decoration: none;
+    padding: 0 5px;
+  }
+
+  #path .seg:hover {
+    background-color: rgba(169, 169, 169, 0.5);
+  }
+
+  #path .div {
+    color: darkgray;
+    padding: 0 5px;
+  }
+
+  #explorer .item {
+    text-align: center;
+    /* grid mode: no width here - the grid column (see #explorer) sizes it. list mode
+       overrides below give it a plain 100%-width row instead */
+    min-height: calc(200px * var(--zoom, 0.75));
+    padding: 10px;
+    text-decoration: none;
+    color: white;
+  }
+
+  #explorer .item .name {
+    word-break: break-word;
+  }
+
+  #explorer .item:hover {
+    text-decoration: underline;
+    background-color: rgba(169, 169, 169, 0.5);
+  }
+
+  /* the grid item currently open in the side panel (see syncPreviewHighlight) - same subtle
+     highlight as :hover, so it stays persistent without competing for attention */
+  #explorer .item.previewing {
+    background-color: rgba(169, 169, 169, 0.5);
+  }
+
+  #explorer .thumb {
+    width: calc(120px * var(--zoom, 0.75));
+    height: calc(120px * var(--zoom, 0.75));
+    object-fit: contain;
+  }
+
+  /* code + pdf previews (iframe slides): an inset dark panel instead of fancybox's
+     default white padded box */
+  .fancybox__slide.has-iframe {
+    padding: 32px 48px;
+  }
+
+  .fancybox__slide.has-iframe .f-html {
+    padding: 0;
+    background: #24292e;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  /* size + date are list-view columns; the grid tiles have no room for them */
+  #explorer .meta {
+    display: none;
+  }
+
+  #explorer.list .item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: auto;
+    padding: 4px 10px;
+    text-align: left;
+  }
+
+  #explorer.list .item img {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    object-fit: contain;
+  }
+
+  #explorer.list .name {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+  }
+
+  #explorer.list .meta {
+    display: block;
+    color: darkgray;
+    white-space: nowrap;
+    font-size: 14px;
+    width: 80px;
+    text-align: right;
+  }
+
+  /* the date column (last) needs more room than the size column */
+  #explorer.list .meta:last-child {
+    width: 110px;
+  }
+</style>

@@ -1,0 +1,233 @@
+<dialog id="share-dialog">
+  <div class="dialog-head">
+    <h2>share folder</h2>
+    <button class="close-btn" id="share-close" aria-label="close">✕</button>
+  </div>
+  <p class="hint" id="share-target"></p>
+
+  <div id="share-form-view">
+    <div class="row">
+      <label for="share-duration">expires in</label>
+      <select id="share-duration">
+        <option value="3600">1 hour</option>
+        <option value="86400" selected>1 day</option>
+        <option value="259200">3 days</option>
+        <option value="604800">1 week</option>
+        <option value="2592000">30 days</option>
+      </select>
+    </div>
+    <div class="inline">
+      <button class="btn" id="share-create">create link</button>
+      <span class="msg" id="share-msg"></span>
+    </div>
+  </div>
+
+  <div id="share-result-view" hidden>
+    <p class="hint">anyone with this link can browse and download this folder until it expires.</p>
+    <div class="inline">
+      <input type="text" id="share-link-input" readonly />
+      <button class="btn" id="share-copy">copy</button>
+    </div>
+    <p class="hint" id="share-expiry-note"></p>
+    <p class="hint">manage or revoke this link anytime from settings.</p>
+  </div>
+</dialog>
+
+<script>
+  import { showToast } from "../lib/toast";
+
+  const $dialog = document.getElementById("share-dialog") as HTMLDialogElement;
+  const $target = document.getElementById("share-target")!;
+  const $formView = document.getElementById("share-form-view")!;
+  const $resultView = document.getElementById("share-result-view")!;
+  const $duration = document.getElementById("share-duration") as HTMLSelectElement;
+  const $create = document.getElementById("share-create") as HTMLButtonElement;
+  const $msg = document.getElementById("share-msg")!;
+  const $linkInput = document.getElementById("share-link-input") as HTMLInputElement;
+  const $copy = document.getElementById("share-copy")!;
+  const $expiryNote = document.getElementById("share-expiry-note")!;
+
+  let currentPath: string[] = [];
+
+  const flash = (text: string, ok: boolean) => {
+    $msg.textContent = text;
+    $msg.classList.toggle("ok", ok);
+    $msg.classList.toggle("err", !ok);
+  };
+
+  const durationSeconds = (): number => Number($duration.value);
+
+  window.addEventListener("openShareDialog", e => {
+    currentPath = (e as CustomEvent<{ path: string[] }>).detail.path;
+    $target.textContent = `/${currentPath.join("/")}`;
+    $formView.hidden = false;
+    $resultView.hidden = true;
+    $msg.textContent = "";
+    $create.disabled = false;
+    $create.textContent = "create link";
+    $dialog.showModal();
+  });
+
+  document.getElementById("share-close")!.addEventListener("click", () => $dialog.close());
+  $dialog.addEventListener("click", e => {
+    if (e.target === $dialog) $dialog.close();
+  });
+
+  $create.addEventListener("click", async () => {
+    $create.disabled = true;
+    $create.textContent = "creating…";
+    flash("", true);
+
+    try {
+      const res = await fetch("/api/shares", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path: currentPath.join("/"), durationSeconds: durationSeconds() })
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        flash(body.error ?? "failed to create link", false);
+        $create.disabled = false;
+        $create.textContent = "create link";
+        return;
+      }
+
+      const { share } = (await res.json()) as { share: { token: string; expiresAt: number } };
+      $linkInput.value = `${location.origin}/share?token=${share.token}`;
+      $expiryNote.textContent = `expires ${new Date(share.expiresAt * 1000).toLocaleString()}`;
+      $formView.hidden = true;
+      $resultView.hidden = false;
+      window.dispatchEvent(new Event("shareLinksChanged"));
+    } catch {
+      flash("network error", false);
+      $create.disabled = false;
+      $create.textContent = "create link";
+    }
+  });
+
+  $copy.addEventListener("click", async () => {
+    $linkInput.select();
+    try {
+      await navigator.clipboard.writeText($linkInput.value);
+      showToast("link copied");
+    } catch {
+      showToast("couldn't copy - select and copy manually", "error");
+    }
+  });
+</script>
+
+<style>
+  #share-dialog {
+    width: min(480px, 92vw);
+    background-color: var(--secondary);
+    color: white;
+    border: var(--accent) 1px solid;
+    padding: 20px 24px;
+    font-family: inherit;
+  }
+
+  #share-dialog::backdrop {
+    background-color: rgba(0, 0, 0, 0.6);
+  }
+
+  .dialog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .dialog-head h2 {
+    margin: 0;
+    color: var(--accent);
+  }
+
+  .close-btn {
+    background: none;
+    border: none;
+    color: lightgray;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .close-btn:hover {
+    color: white;
+    background-color: var(--tertiary);
+  }
+
+  .hint {
+    color: darkgray;
+    margin: 6px 0;
+    font-size: 0.85em;
+    word-break: break-all;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 12px 0;
+    flex-wrap: wrap;
+  }
+
+  .row > label {
+    color: lightgray;
+  }
+
+  select,
+  input[type="number"],
+  input[type="text"] {
+    background-color: var(--primary);
+    color: white;
+    border: 1px solid var(--tertiary);
+    padding: 7px 9px;
+    font-family: inherit;
+    outline: none;
+  }
+
+  select:focus,
+  input:focus {
+    border-color: var(--accent);
+  }
+
+  #share-link-input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .btn {
+    background-color: var(--accent);
+    color: var(--primary);
+    border: none;
+    padding: 7px 12px;
+    font-family: inherit;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .msg {
+    font-size: 0.85em;
+  }
+
+  .msg.ok {
+    color: var(--accent);
+  }
+
+  .msg.err {
+    color: #ff6b81;
+  }
+</style>

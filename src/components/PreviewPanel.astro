@@ -1,0 +1,352 @@
+<div class="preview-panel" id="preview-panel" hidden>
+  <div class="panel-head">
+    <div class="panel-title" id="panel-title"></div>
+    <div class="panel-actions">
+      <button id="panel-prev" title="previous (←)" aria-label="previous">‹</button>
+      <button id="panel-next" title="next (→)" aria-label="next">›</button>
+      <a id="panel-download" title="download" aria-label="download" download>⬇</a>
+      <button id="panel-close" title="close (Esc)" aria-label="close">✕</button>
+    </div>
+  </div>
+  <div class="panel-media" id="panel-media"></div>
+  <div class="panel-meta" id="panel-meta"></div>
+</div>
+
+<script>
+  import { html, nothing, render } from "lit-html";
+  import { getMediaUrls, type TFileEntry, type TMediaUrls } from "../lib/mediaUrls";
+  import { humanDate, humanSize } from "../lib/format";
+  import { closePreview, getPreviewItem, stepPreview } from "../lib/previewState";
+  import "../lib/player";
+
+  type TMetaField = { label: string; value: string };
+
+  const $panel = document.getElementById("preview-panel")!;
+  const $title = document.getElementById("panel-title")!;
+  const $prev = document.getElementById("panel-prev") as HTMLButtonElement;
+  const $next = document.getElementById("panel-next") as HTMLButtonElement;
+  const $download = document.getElementById("panel-download") as HTMLAnchorElement;
+  const $close = document.getElementById("panel-close")!;
+  const $media = document.getElementById("panel-media")!;
+  const $meta = document.getElementById("panel-meta")!;
+
+  // bumped on every render so a slow /api/meta response for an item the user already
+  // navigated away from can't clobber the metadata currently on screen
+  let metaRequestId = 0;
+
+  const renderMedia = (urls: TMediaUrls, fileName: string) => {
+    // always tear down first rather than let lit-html try to reuse the previous element:
+    // pw-player only builds itself once (in connectedCallback), so reusing one across two
+    // different sources would leave it showing the old file
+    render(nothing, $media);
+
+    if (urls.kind === "video" || urls.kind === "audio") {
+      render(
+        html`<div class="pw-box" data-pw-box>
+          <pw-player data-src=${urls.viewUrl} data-poster=${urls.kind === "audio" ? urls.thumbUrl : nothing}
+          ></pw-player>
+        </div>`,
+        $media
+      );
+    } else if (urls.isPdf || urls.isCode) {
+      render(html`<iframe src=${urls.viewUrl} title=${fileName}></iframe>`, $media);
+    } else {
+      // thumbUrl is already sitting in the browser cache (the grid rendered it for this
+      // same file), so it paints instantly and holds the box's size - the full-res image
+      // is stacked on top, absolutely positioned so it can't affect that size, and fades
+      // in once loaded instead of popping in over a blank box
+      render(
+        html`<div class="pw-img-box">
+          <img class="pw-img-thumb" src=${urls.thumbUrl} alt="" aria-hidden="true" />
+          <img class="pw-img-full" src=${urls.viewUrl} alt=${fileName} />
+        </div>`,
+        $media
+      );
+      const $full = $media.querySelector(".pw-img-full")!;
+      const reveal = () => $full.classList.add("is-loaded");
+      if ($full instanceof HTMLImageElement && $full.complete) reveal();
+      else $full.addEventListener("load", reveal, { once: true });
+    }
+  };
+
+  // always-visible size/date row, plus whatever async status/fields go underneath it -
+  // rendered together in one call each time so there's a single source of truth for $meta
+  const renderMeta = (file: TFileEntry, below: unknown) =>
+    render(
+      html`<div class="meta-basics"><span>${humanSize(file.size)}</span><span>${humanDate(file.mtime)}</span></div>
+        ${below}`,
+      $meta
+    );
+
+  const loadMeta = async (urls: TMediaUrls, file: TFileEntry) => {
+    const requestId = ++metaRequestId;
+    renderMeta(file, html`<div class="meta-status">loading details...</div>`);
+
+    let fields: TMetaField[] = [];
+    try {
+      const res = await fetch(`/api/meta?path=${encodeURIComponent(urls.key)}`);
+      if (!res.ok) throw new Error();
+      ({ fields } = (await res.json()) as { fields: TMetaField[] });
+    } catch {
+      fields = [];
+    }
+
+    if (requestId !== metaRequestId) return; // a different item is showing now
+
+    renderMeta(
+      file,
+      fields.length === 0
+        ? html`<div class="meta-status">no additional metadata</div>`
+        : html`<dl class="meta-list">${fields.map(f => html`<dt>${f.label}</dt><dd>${f.value}</dd>`)}</dl>`
+    );
+  };
+
+  const renderPanel = () => {
+    const item = getPreviewItem();
+
+    if (!item) {
+      $panel.hidden = true;
+      render(nothing, $media);
+      render(nothing, $meta);
+      return;
+    }
+
+    const file = item.files[item.index];
+    const urls = getMediaUrls(item.currentPath, file);
+
+    $panel.hidden = false;
+    $title.textContent = file.name;
+    $prev.disabled = item.index <= 0;
+    $next.disabled = item.index >= item.files.length - 1;
+    $download.href = urls.fileUrl;
+    $download.download = file.name;
+
+    renderMedia(urls, file.name);
+    void loadMeta(urls, file);
+  };
+
+  $close.addEventListener("click", () => closePreview());
+  $prev.addEventListener("click", () => stepPreview(-1));
+  $next.addEventListener("click", () => stepPreview(1));
+
+  // capture phase, same as pw-player's own keydown listener (see lib/player.ts) - registered
+  // at page load, before any player element exists, so this always runs first regardless of
+  // when a player is created. Arrow keys are reserved for moving between files in the panel
+  // (unlike the lightbox, where an active video keeps them for seeking) - stopping the event
+  // here means it never reaches the player's own arrow-key handling. j/l (10s skip) and the
+  // rest of the player's shortcuts are untouched, so seeking is still available, just not on
+  // the arrow keys while the panel is in charge of them.
+  document.addEventListener(
+    "keydown",
+    e => {
+      if ($panel.hidden) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.key === "Escape") {
+        closePreview();
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        stepPreview(e.key === "ArrowLeft" ? -1 : 1);
+      }
+    },
+    true
+  );
+
+  window.addEventListener("previewChange", renderPanel);
+</script>
+
+<style>
+  .preview-panel {
+    width: 380px;
+    flex: 0 0 380px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--secondary);
+    border: var(--accent) 1px solid;
+    color: white;
+    overflow: hidden;
+    /* cap on the media area's height - a viewport-relative value, not a percentage, so it
+       stays meaningful even though .panel-media itself no longer has a fixed/minimum height */
+    --panel-media-cap: min(45vh, 480px);
+  }
+
+  /* the [hidden] attribute is how the panel is fully removed from layout when nothing is
+     open - the higher-specificity selector is needed since it'd otherwise lose to the plain
+     ".preview-panel { display: flex }" rule above (same cascade origin, so specificity decides,
+     not the browser's default [hidden] rule) */
+  .preview-panel[hidden] {
+    display: none;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--tertiary);
+  }
+
+  .panel-title {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+    font-size: 14px;
+  }
+
+  .panel-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .panel-actions button,
+  .panel-actions a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    height: 26px;
+    background-color: var(--tertiary);
+    color: white;
+    border: 1px solid var(--tertiary);
+    font-family: inherit;
+    font-size: 13px;
+    text-decoration: none;
+    cursor: pointer;
+    padding: 0 6px;
+  }
+
+  .panel-actions button:hover,
+  .panel-actions a:hover {
+    border-color: var(--accent);
+  }
+
+  .panel-actions button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .panel-media {
+    /* no min-height: a small image (or nothing yet) shouldn't force empty letterboxing -
+       the box shrinks to fit its content, capped so one huge item can't dominate the panel.
+       the cap is repeated as a max-height directly on each content type below (not a
+       percentage of this element) since with no floor, this box's own height is only
+       "definite" once content decides it - percentages of it wouldn't reliably resolve */
+    flex: 0 0 auto;
+    max-height: var(--panel-media-cap);
+    background-color: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .panel-meta {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px;
+  }
+</style>
+
+<style is:global>
+  /* .panel-media's contents (img/iframe/pw-player) are rendered client-side via lit-html,
+     so - like the meta rules below - these must stay unscoped to actually apply */
+  #preview-panel .panel-media img {
+    max-width: 100%;
+    max-height: var(--panel-media-cap);
+    object-fit: contain;
+  }
+
+  /* relative anchor for the thumb/full-res stack - sized by .pw-img-thumb (normal flow),
+     not .pw-img-full (absolutely positioned, so it can't push this box around) */
+  #preview-panel .panel-media .pw-img-box {
+    position: relative;
+    max-height: var(--panel-media-cap);
+  }
+
+  #preview-panel .panel-media .pw-img-thumb {
+    display: block;
+  }
+
+  /* thumb and full-res share the source image's aspect ratio (thumbnails are generated
+     with fit: "inside", never cropped), so stretching to fill the thumb's box lands the
+     full-res image at effectively the same displayed size - no jump when it reveals */
+  #preview-panel .panel-media .pw-img-full {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+  }
+
+  #preview-panel .panel-media .pw-img-full.is-loaded {
+    opacity: 1;
+  }
+
+  /* no natural size of its own to shrink-wrap, unlike an image - just fill up to the cap */
+  #preview-panel .panel-media iframe {
+    width: 100%;
+    height: var(--panel-media-cap);
+    border: 0;
+    outline: none;
+    background: #24292e;
+  }
+
+  /* 16:9 default before pw-player's own js (sizeBox in lib/player.ts) takes over with the
+     real aspect ratio - width is the definite dimension here, so height derives from it
+     without needing .panel-media itself to have a definite height.
+     :not(.pw-audio-box) matters here: #preview-panel's id gives this more specificity than
+     lib/player.css's plain ".pw-audio-box" class rule, which would otherwise lose the fight
+     and get overridden back to a 16:9 box instead of its own auto-height card layout */
+  #preview-panel .panel-media .pw-box:not(.pw-audio-box) {
+    width: 100%;
+    max-height: var(--panel-media-cap);
+    aspect-ratio: 16 / 9;
+  }
+
+  /* the audio card has its own accent border - with no gap it sits flush against
+     .panel-media's edges (which are themselves flush against .preview-panel's own accent
+     border), so the two 1px lines merge into what reads as one doubled border */
+  #preview-panel .panel-media:has(.pw-box.pw-audio-box) {
+    padding: 12px;
+  }
+
+  #preview-panel .meta-basics {
+    display: flex;
+    justify-content: space-between;
+    color: darkgray;
+    font-size: 13px;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--tertiary);
+  }
+
+  #preview-panel .meta-status {
+    color: darkgray;
+    font-size: 13px;
+  }
+
+  #preview-panel .meta-list {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 7px 12px;
+    margin: 0;
+    font-size: 13px;
+  }
+
+  #preview-panel .meta-list dt {
+    color: darkgray;
+    white-space: nowrap;
+  }
+
+  #preview-panel .meta-list dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+</style>

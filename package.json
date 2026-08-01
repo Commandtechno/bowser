@@ -1,0 +1,35 @@
+{
+  "name": "technobowser",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro check && astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@astrojs/node": "^11.0.3",
+    "@fancyapps/ui": "^6.1.14",
+    "@mediabunny/ac3": "^1.52.2",
+    "@mediabunny/prores": "^1.52.2",
+    "@libsql/client": "^0.17.4",
+    "@node-rs/argon2": "^2.0.2",
+    "astro": "^7.1.6",
+    "drizzle-orm": "^0.45.2",
+    "lit-html": "^3.3.3",
+    "mediabunny": "^1.52.2",
+    "mime": "^4.1.0",
+    "pdfjs-dist": "^6.2.108",
+    "sharp": "^0.35.3",
+    "shiki": "^4.4.1",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "drizzle-kit": "^0.31.10"
+  }
+}

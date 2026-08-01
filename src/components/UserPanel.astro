@@ -1,0 +1,117 @@
+---
+import SettingsDialog from "./SettingsDialog.astro";
+
+const user = Astro.locals.user!;
+const initials = user.username.slice(0, 2).toUpperCase();
+---
+
+<div class="user-panel">
+  <div class="avatar" id="panel-avatar" data-initials={initials}>
+    {user.hasAvatar ? <img src={`/api/avatar?id=${user.id}`} alt="" /> : <span>{initials}</span>}
+  </div>
+  <div class="meta">
+    <span class="name" title={user.username}>{user.username}</span>
+    <span class="role">{user.isAdmin ? "admin" : "member"}</span>
+  </div>
+  <button class="icon-btn" id="open-settings" title="settings" aria-label="settings">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path
+        d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z">
+      </path>
+    </svg>
+  </button>
+  <button class="icon-btn" id="logout" title="log out" aria-label="log out">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+      <polyline points="16 17 21 12 16 7"></polyline>
+      <line x1="21" y1="12" x2="9" y2="12"></line>
+    </svg>
+  </button>
+</div>
+
+<SettingsDialog />
+
+<script>
+  const $dialog = document.getElementById("settings-dialog") as HTMLDialogElement;
+
+  document.getElementById("open-settings")!.addEventListener("click", () => {
+    $dialog.showModal();
+    window.dispatchEvent(new Event("settingsOpen"));
+  });
+
+  document.getElementById("logout")!.addEventListener("click", async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    location.href = "/login";
+  });
+</script>
+
+<style>
+  .user-panel {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background-color: var(--secondary);
+    border: var(--accent) 1px solid;
+  }
+
+  .avatar {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    background-color: var(--accent);
+    color: var(--primary);
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+  }
+
+  .avatar :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: bold;
+  }
+
+  .role {
+    color: darkgray;
+    font-size: 0.85em;
+  }
+
+  .icon-btn {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: lightgray;
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .icon-btn:hover {
+    color: var(--accent);
+    background-color: var(--tertiary);
+  }
+</style>

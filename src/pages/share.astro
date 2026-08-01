@@ -1,0 +1,297 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { getShareLink, isShareLinkExpired } from "../lib/shareLinks";
+
+const token = Astro.url.searchParams.get("token") ?? "";
+const share = token ? await getShareLink(token) : null;
+const invalid = !share || isShareLinkExpired(share);
+
+if (invalid) Astro.response.status = 404;
+
+const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "shared folder") : "";
+---
+
+<Layout title={invalid ? "Link expired - Technobowser" : `${rootName} (shared) - Technobowser`}>
+  {
+    invalid ? (
+      <div class="wrap">
+        <div class="card">
+          <h2>link not found</h2>
+          <p class="sub">this share link is invalid, revoked, or has expired.</p>
+        </div>
+      </div>
+    ) : (
+      <div class="container">
+        <div class="topbar">
+          <div id="path"></div>
+          <button class="btn" id="download-folder" title="download this folder">download folder</button>
+        </div>
+        <p class="hint">
+          shared by <strong>{share!.createdByUsername}</strong> · expires {new Date(share!.expiresAt * 1000).toLocaleString()}
+        </p>
+        <div id="explorer"></div>
+      </div>
+    )
+  }
+</Layout>
+
+<script define:vars={{ token, rootName }}>
+  window.__shareToken = token;
+  window.__shareRootName = rootName;
+</script>
+
+<script>
+  import { html, render } from "lit-html";
+  import { classifyMedia, iconFor } from "../lib/mediaKind";
+  import { humanDate, humanSize } from "../lib/format";
+  import { downloadFolder, supportsFolderDownload } from "../lib/downloadFolder";
+  import { showToast } from "../lib/toast";
+
+  declare global {
+    interface Window {
+      __shareToken?: string;
+      __shareRootName?: string;
+    }
+  }
+
+  const $path = document.getElementById("path");
+  const $explorer = document.getElementById("explorer");
+  const $downloadFolder = document.getElementById("download-folder") as HTMLButtonElement | null;
+
+  // this whole script only runs when the server confirmed the link is valid, but the
+  // elements above are still typed as nullable - bail instead of asserting them away
+  if ($path && $explorer && $downloadFolder) {
+    const token = window.__shareToken!;
+    const rootName = window.__shareRootName!;
+
+    type TFileEntry = { name: string; size: number; mtime: number };
+    type TListing = { dirs: string[]; files: TFileEntry[] };
+
+    const getSubPath = (): string[] => decodeURIComponent(location.hash.replace("#", "")).split("/").filter(Boolean);
+    const subPathHref = (subPath: string[]): string => `#${subPath.join("/")}`;
+
+    const listUrl = (subPath: string[]): string =>
+      `/api/share-list?token=${encodeURIComponent(token)}&path=${encodeURIComponent(subPath.join("/"))}`;
+    const fileUrl = (subPath: string[]): string =>
+      `/api/share-file?token=${encodeURIComponent(token)}&path=${encodeURIComponent(subPath.join("/"))}`;
+
+    const renderBreadcrumb = (subPath: string[]) => {
+      const crumbs = [html`<a class="seg" href=${subPathHref([])}>${rootName}</a><span class="div">/</span>`];
+      let acc: string[] = [];
+      for (const seg of subPath) {
+        acc = [...acc, seg];
+        crumbs.push(html`<a class="seg" href=${subPathHref(acc)}>${seg}</a><span class="div">/</span>`);
+      }
+      render(crumbs, $path);
+    };
+
+    const renderExplorer = (subPath: string[], listing: TListing) => {
+      const items = [];
+
+      for (const dir of listing.dirs) {
+        const dirPath = [...subPath, dir];
+        items.push(
+          html`<a class="item dir" href=${subPathHref(dirPath)}>
+            <img src="/folder.svg" alt="folder" class="thumb" width="120" height="120" />
+            <div class="name">${dir}</div>
+          </a>`
+        );
+      }
+
+      for (const file of listing.files) {
+        const filePath = [...subPath, file.name];
+        const kind = classifyMedia(file.name);
+        const thumbSrc = kind === "native" ? fileUrl(filePath) : iconFor(file.name);
+
+        items.push(
+          html`<a class="item" href=${fileUrl(filePath)} download=${file.name}>
+            <img src=${thumbSrc} class="thumb" alt="file icon" width="120" height="120" loading="lazy" />
+            <div class="name">${file.name}</div>
+            <div class="meta">${humanSize(file.size)}</div>
+            <div class="meta">${humanDate(file.mtime)}</div>
+          </a>`
+        );
+      }
+
+      render(items.length ? items : html`<span class="dim">this folder is empty</span>`, $explorer);
+    };
+
+    const onUpdate = async () => {
+      const subPath = getSubPath();
+      renderBreadcrumb(subPath);
+
+      const res = await fetch(listUrl(subPath));
+      if (!res.ok) {
+        render(`folder "${subPath.at(-1) ?? rootName}" not found`, $explorer);
+        return;
+      }
+      renderExplorer(subPath, await res.json());
+    };
+
+    if (supportsFolderDownload()) {
+      $downloadFolder.addEventListener("click", async () => {
+        const subPath = getSubPath();
+        const name = subPath.at(-1) ?? rootName;
+        $downloadFolder.disabled = true;
+        try {
+          await downloadFolder(
+            name,
+            async relPath => {
+              const r = await fetch(listUrl([...subPath, ...relPath.split("/").filter(Boolean)]));
+              if (!r.ok) throw new Error("failed to list folder");
+              return r.json();
+            },
+            relPath => fileUrl([...subPath, ...relPath.split("/").filter(Boolean)])
+          );
+          showToast(`"${name}" downloaded`, "success");
+        } catch (e) {
+          if ((e as { name?: string } | undefined)?.name !== "AbortError") {
+            console.error(e);
+            showToast(`failed to download "${name}"`, "error");
+          }
+        } finally {
+          $downloadFolder.disabled = false;
+        }
+      });
+    } else {
+      $downloadFolder.disabled = true;
+      $downloadFolder.title = "your browser doesn't support saving folders directly";
+    }
+
+    window.addEventListener("hashchange", onUpdate);
+    onUpdate();
+  }
+</script>
+
+<style>
+  .wrap {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .card {
+    width: min(360px, 90vw);
+    background-color: var(--secondary);
+    border: var(--accent) 1px solid;
+    padding: 28px;
+    text-align: center;
+  }
+
+  .card h2 {
+    margin: 0 0 8px;
+    color: var(--accent);
+  }
+
+  .sub {
+    color: darkgray;
+    margin: 0;
+  }
+
+  .container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 16px;
+    width: 100%;
+  }
+
+  .topbar {
+    display: flex;
+    gap: 10px;
+  }
+
+  #path {
+    flex: 1;
+    background-color: var(--secondary);
+    border: var(--accent) 1px solid;
+    padding: 10px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .btn {
+    background-color: var(--accent);
+    color: var(--primary);
+    border: none;
+    padding: 0 14px;
+    font-family: inherit;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .hint {
+    color: darkgray;
+    margin: 0;
+    font-size: 0.85em;
+  }
+
+  #explorer {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 10px;
+    height: 100%;
+    background-color: var(--secondary);
+    border: var(--accent) 1px solid;
+    padding: 10px;
+    overflow-y: scroll;
+  }
+</style>
+
+<style is:global>
+  #path .seg {
+    color: white;
+    text-decoration: none;
+    padding: 0 5px;
+  }
+
+  #path .seg:hover {
+    background-color: rgba(169, 169, 169, 0.5);
+  }
+
+  #path .div {
+    color: darkgray;
+    padding: 0 5px;
+  }
+
+  #explorer .item {
+    text-align: center;
+    width: 160px;
+    min-height: 200px;
+    padding: 10px;
+    text-decoration: none;
+    color: white;
+  }
+
+  #explorer .item .name {
+    word-break: break-word;
+  }
+
+  #explorer .item:hover {
+    text-decoration: underline;
+    background-color: rgba(169, 169, 169, 0.5);
+  }
+
+  #explorer .thumb {
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+  }
+
+  #explorer .meta {
+    display: none;
+  }
+
+  #explorer .dim {
+    color: darkgray;
+  }
+</style>
