@@ -7,6 +7,10 @@ import { pipeline } from "node:stream/promises";
 
 export const PHOTOS_DIR = resolve(import.meta.env.PHOTOS_DIR || "./photos");
 export const THUMBS_DIR = resolve(import.meta.env.THUMBS_DIR || "./.thumbs");
+// nested inside PHOTOS_DIR (not a sibling like THUMBS_DIR) so trashing an entry is an atomic
+// same-filesystem rename() rather than a copy+delete - and it's invisible in listings for
+// free, since listDir already skips dot-prefixed entries. See src/lib/auditLog.ts.
+export const TRASH_DIR = join(PHOTOS_DIR, ".trash");
 
 export class InvalidPathError extends Error {}
 export class EntryExistsError extends Error {}
@@ -16,6 +20,10 @@ export const resolveInDir = (root: string, relPath: string): string => {
   const segs = relPath.split("/").filter(seg => seg.length > 0);
   if (segs.some(seg => seg === "." || seg === ".."))
     throw new InvalidPathError(`path traversal rejected: ${relPath}`);
+  // .trash is reserved for src/lib/auditLog.ts - without this a member could bypass
+  // admin-only restore/purge by addressing trashed entries directly through the normal
+  // file API (e.g. PATCH /api/entry with path=".trash/<id>")
+  if (segs[0] === ".trash") throw new InvalidPathError(`path is reserved: ${relPath}`);
 
   const full = resolve(join(root, ...segs));
   if (full !== root && !full.startsWith(root + sep)) throw new InvalidPathError(`path escapes root: ${relPath}`);
@@ -64,13 +72,6 @@ export const createFolder = async (root: string, relPath: string): Promise<void>
   await mkdir(dirPath);
 };
 
-// deletes a file or directory (recursively) - refuses to touch the root itself
-export const deleteEntry = async (root: string, relPath: string): Promise<void> => {
-  const targetPath = resolveInDir(root, relPath);
-  if (targetPath === root) throw new InvalidPathError("cannot delete the root directory");
-  await rm(targetPath, { recursive: true });
-};
-
 // renames/moves a file or directory - refuses to touch the root, to move an entry into
 // itself or one of its own descendants, or to clobber an existing entry at the destination
 export const moveEntry = async (root: string, fromRelPath: string, toRelPath: string): Promise<void> => {
@@ -91,8 +92,9 @@ export const moveEntry = async (root: string, fromRelPath: string, toRelPath: st
 // picks a name that doesn't collide with anything already in dirPath, appending " (2)",
 // " (3)", ... before the extension - mirrors how common OS file managers resolve conflicts
 // instead of silently clobbering an existing file. Same stat-then-act race the rest of this
-// file accepts elsewhere (see moveEntry) rather than something transactional
-const uniqueName = async (dirPath: string, baseName: string): Promise<string> => {
+// file accepts elsewhere (see moveEntry) rather than something transactional. Also reused by
+// src/lib/auditLog.ts when restoring a trashed entry whose original spot is now occupied
+export const uniqueName = async (dirPath: string, baseName: string): Promise<string> => {
   const dot = baseName.lastIndexOf(".");
   const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
   const ext = dot > 0 ? baseName.slice(dot) : "";
@@ -112,7 +114,7 @@ export const writeUploadedFile = async (
   root: string,
   relPath: string,
   body: ReadableStream<Uint8Array>
-): Promise<{ name: string }> => {
+): Promise<{ name: string; size: number }> => {
   const segs = relPath.split("/").filter(seg => seg.length > 0);
   if (segs.length === 0) throw new InvalidPathError("a file name is required");
   if (segs.some(seg => seg === "." || seg === ".."))
@@ -132,7 +134,8 @@ export const writeUploadedFile = async (
     throw e;
   }
 
-  return { name };
+  const { size } = await stat(destPath);
+  return { name, size };
 };
 
 // streams a file with range support - shared by the authenticated /api/file endpoint and

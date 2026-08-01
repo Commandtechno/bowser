@@ -1,9 +1,11 @@
 import { createClient } from "@libsql/client";
-import { and, count, desc, eq, gt, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull, lte, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
+import { alias } from "drizzle-orm/sqlite-core";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import {
+  auditLog,
   DEFAULT_ACCENT,
   DEFAULT_PREVIEW_MODE,
   DEFAULT_ROLE,
@@ -12,12 +14,14 @@ import {
   ROLES,
   sessions,
   shareLinks,
+  shareServes,
   users,
+  type TAuditAction,
   type TRole
 } from "./schema";
 
 export { DEFAULT_ACCENT, DEFAULT_PREVIEW_MODE, DEFAULT_ROLE, DEFAULT_SYNTAX_THEME, isValidRole, ROLES };
-export type { TRole };
+export type { TAuditAction, TRole };
 
 // readonly accounts can browse/view/download but can't touch the filesystem or share links
 export const canWrite = (user: { role: TRole }): boolean => user.role !== "readonly";
@@ -33,7 +37,7 @@ const globalForDb = globalThis as unknown as {
   __appDbReady?: Promise<void>;
 };
 
-export const db = (globalForDb.__appDb ??= drizzle(client, { schema: { users, sessions, shareLinks } }));
+export const db = (globalForDb.__appDb ??= drizzle(client, { schema: { users, sessions, shareLinks, shareServes, auditLog } }));
 
 // no migration system - bootstrap runs on every boot and patches pre-existing db files
 const bootstrap = async (): Promise<void> => {
@@ -72,6 +76,31 @@ const bootstrap = async (): Promise<void> => {
 
     CREATE INDEX IF NOT EXISTS idx_share_links_created_by ON share_links(created_by);
     CREATE INDEX IF NOT EXISTS idx_share_links_expires_at ON share_links(expires_at);
+
+    CREATE TABLE IF NOT EXISTS share_serves (
+      token      TEXT PRIMARY KEY REFERENCES share_links(token) ON DELETE CASCADE,
+      protocol   TEXT NOT NULL,
+      port       INTEGER NOT NULL,
+      password   TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_share_serves_token ON share_serves(token);
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      action     TEXT NOT NULL,
+      path       TEXT NOT NULL,
+      detail     TEXT,
+      undone_at  INTEGER,
+      undone_by  INTEGER REFERENCES users(id),
+      purged_at  INTEGER,
+      purged_by  INTEGER REFERENCES users(id),
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
   `);
 
   const cols = await client.execute("PRAGMA table_info(users)");
@@ -260,7 +289,11 @@ export type TShareLinkRow = {
   expiresAt: number;
 };
 
-export type TShareLinkWithUser = TShareLinkRow & { createdByUsername: string };
+export type TShareLinkWithUser = TShareLinkRow & {
+  createdByUsername: string;
+  protocol: string | null;
+  servePort: number | null;
+};
 
 const shareLinkSelection = {
   token: shareLinks.token,
@@ -268,7 +301,9 @@ const shareLinkSelection = {
   createdBy: shareLinks.createdBy,
   createdAt: shareLinks.createdAt,
   expiresAt: shareLinks.expiresAt,
-  createdByUsername: users.username
+  createdByUsername: users.username,
+  protocol: shareServes.protocol,
+  servePort: shareServes.port
 };
 
 export const insertShareLink = async (row: TShareLinkRow): Promise<void> => {
@@ -282,6 +317,7 @@ export const getShareLinkRow = async (token: string): Promise<TShareLinkWithUser
     .select(shareLinkSelection)
     .from(shareLinks)
     .innerJoin(users, eq(users.id, shareLinks.createdBy))
+    .leftJoin(shareServes, eq(shareServes.token, shareLinks.token))
     .where(eq(shareLinks.token, token));
   return row ?? null;
 };
@@ -292,7 +328,8 @@ export const listShareLinkRows = async (includeExpired: boolean): Promise<TShare
   const base = db
     .select(shareLinkSelection)
     .from(shareLinks)
-    .innerJoin(users, eq(users.id, shareLinks.createdBy));
+    .innerJoin(users, eq(users.id, shareLinks.createdBy))
+    .leftJoin(shareServes, eq(shareServes.token, shareLinks.token));
 
   if (includeExpired) return base.orderBy(desc(shareLinks.createdAt));
 
@@ -303,4 +340,181 @@ export const listShareLinkRows = async (includeExpired: boolean): Promise<TShare
 export const deleteShareLinkRow = async (token: string): Promise<void> => {
   await ready;
   await db.delete(shareLinks).where(eq(shareLinks.token, token));
+};
+
+// ---- share serves (rclone-backed protocol access for a share link, src/lib/rcloneServe.ts) ----
+
+export type TShareServeRow = { token: string; protocol: string; port: number; password: string };
+
+export const insertShareServe = async (row: TShareServeRow): Promise<void> => {
+  await ready;
+  await db.insert(shareServes).values(row);
+};
+
+export const getShareServe = async (token: string): Promise<TShareServeRow | null> => {
+  await ready;
+  const [row] = await db
+    .select({ token: shareServes.token, protocol: shareServes.protocol, port: shareServes.port, password: shareServes.password })
+    .from(shareServes)
+    .where(eq(shareServes.token, token));
+  return row ?? null;
+};
+
+export const deleteShareServe = async (token: string): Promise<void> => {
+  await ready;
+  await db.delete(shareServes).where(eq(shareServes.token, token));
+};
+
+export const updateShareServePort = async (token: string, port: number): Promise<void> => {
+  await ready;
+  await db.update(shareServes).set({ port }).where(eq(shareServes.token, token));
+};
+
+// share serves whose parent share link hasn't expired yet - used to respawn rclone
+// processes for still-active shares after a server restart
+export const listActiveShareServes = async (): Promise<(TShareServeRow & { path: string; expiresAt: number })[]> => {
+  await ready;
+  const nowS = Math.floor(Date.now() / 1000);
+  return db
+    .select({
+      token: shareServes.token,
+      protocol: shareServes.protocol,
+      port: shareServes.port,
+      password: shareServes.password,
+      path: shareLinks.path,
+      expiresAt: shareLinks.expiresAt
+    })
+    .from(shareServes)
+    .innerJoin(shareLinks, eq(shareLinks.token, shareServes.token))
+    .where(gt(shareLinks.expiresAt, nowS));
+};
+
+// tokens of share_serves rows whose parent share link has already expired - covers shares
+// that expired while the server was down and so were never picked up by
+// listActiveShareServes/reconciliation in the first place; the periodic sweep in
+// rcloneServe.ts uses this (not just its in-memory process map) so those rows don't leak
+export const listExpiredShareServeTokens = async (): Promise<string[]> => {
+  await ready;
+  const nowS = Math.floor(Date.now() / 1000);
+  const rows = await db
+    .select({ token: shareServes.token })
+    .from(shareServes)
+    .innerJoin(shareLinks, eq(shareLinks.token, shareServes.token))
+    .where(lte(shareLinks.expiresAt, nowS));
+  return rows.map(row => row.token);
+};
+
+// ---- audit log / trash (backing store for src/lib/auditLog.ts) ----
+
+const undoneByUser = alias(users, "undone_by_user");
+const purgedByUser = alias(users, "purged_by_user");
+
+export type TAuditLogRow = {
+  id: number;
+  userId: number;
+  username: string;
+  action: TAuditAction;
+  path: string;
+  detail: string | null;
+  undoneAt: number | null;
+  undoneBy: number | null;
+  undoneByUsername: string | null;
+  purgedAt: number | null;
+  purgedBy: number | null;
+  purgedByUsername: string | null;
+  createdAt: number;
+};
+
+// every read joins in usernames directly (rather than leaving the client to resolve user ids)
+// since the audit log/trash are viewable by readonly accounts too, who can't hit the
+// admin-only /api/users to look names up themselves
+const auditLogSelection = {
+  id: auditLog.id,
+  userId: auditLog.userId,
+  username: users.username,
+  action: auditLog.action,
+  path: auditLog.path,
+  detail: auditLog.detail,
+  undoneAt: auditLog.undoneAt,
+  undoneBy: auditLog.undoneBy,
+  undoneByUsername: undoneByUser.username,
+  purgedAt: auditLog.purgedAt,
+  purgedBy: auditLog.purgedBy,
+  purgedByUsername: purgedByUser.username,
+  createdAt: auditLog.createdAt
+};
+
+export const insertAuditLog = async (row: {
+  userId: number;
+  action: TAuditAction;
+  path: string;
+  detail: string | null;
+}): Promise<number> => {
+  await ready;
+  const [{ id }] = await db.insert(auditLog).values(row).returning({ id: auditLog.id });
+  return id;
+};
+
+export const getAuditLogRow = async (id: number): Promise<TAuditLogRow | null> => {
+  await ready;
+  const [row] = await db
+    .select(auditLogSelection)
+    .from(auditLog)
+    .innerJoin(users, eq(users.id, auditLog.userId))
+    .leftJoin(undoneByUser, eq(undoneByUser.id, auditLog.undoneBy))
+    .leftJoin(purgedByUser, eq(purgedByUser.id, auditLog.purgedBy))
+    .where(eq(auditLog.id, id));
+  return row ?? null;
+};
+
+// newest-first, cursor-paginated for the settings History tab
+export const listAuditLogRows = async (opts: { beforeId?: number; limit: number }): Promise<TAuditLogRow[]> => {
+  await ready;
+  const base = db
+    .select(auditLogSelection)
+    .from(auditLog)
+    .innerJoin(users, eq(users.id, auditLog.userId))
+    .leftJoin(undoneByUser, eq(undoneByUser.id, auditLog.undoneBy))
+    .leftJoin(purgedByUser, eq(purgedByUser.id, auditLog.purgedBy));
+
+  return (opts.beforeId !== undefined ? base.where(sql`${auditLog.id} < ${opts.beforeId}`) : base)
+    .orderBy(desc(auditLog.id))
+    .limit(opts.limit);
+};
+
+// active (not yet undone, and not a terminal purge) rows newer than `id`, newest-first -
+// the "everything that happened after this point" set that a revert-to-here cascade walks
+export const listAuditLogAfter = async (id: number): Promise<TAuditLogRow[]> => {
+  await ready;
+  return db
+    .select(auditLogSelection)
+    .from(auditLog)
+    .innerJoin(users, eq(users.id, auditLog.userId))
+    .leftJoin(undoneByUser, eq(undoneByUser.id, auditLog.undoneBy))
+    .leftJoin(purgedByUser, eq(purgedByUser.id, auditLog.purgedBy))
+    .where(and(gt(auditLog.id, id), isNull(auditLog.undoneAt), ne(auditLog.action, "purge")))
+    .orderBy(desc(auditLog.id));
+};
+
+// currently-trashed items: deletes that haven't been restored or permanently purged
+export const listActiveTrash = async (): Promise<TAuditLogRow[]> => {
+  await ready;
+  return db
+    .select(auditLogSelection)
+    .from(auditLog)
+    .innerJoin(users, eq(users.id, auditLog.userId))
+    .leftJoin(undoneByUser, eq(undoneByUser.id, auditLog.undoneBy))
+    .leftJoin(purgedByUser, eq(purgedByUser.id, auditLog.purgedBy))
+    .where(and(eq(auditLog.action, "delete"), isNull(auditLog.undoneAt), isNull(auditLog.purgedAt)))
+    .orderBy(desc(auditLog.id));
+};
+
+export const markAuditLogUndone = async (id: number, userId: number): Promise<void> => {
+  await ready;
+  await db.update(auditLog).set({ undoneAt: Math.floor(Date.now() / 1000), undoneBy: userId }).where(eq(auditLog.id, id));
+};
+
+export const markAuditLogPurged = async (id: number, userId: number): Promise<void> => {
+  await ready;
+  await db.update(auditLog).set({ purgedAt: Math.floor(Date.now() / 1000), purgedBy: userId }).where(eq(auditLog.id, id));
 };

@@ -153,4 +153,60 @@ const accent = Astro.locals.user?.accentColor;
   .toast-error {
     border-left-color: #ff6b81;
   }
+
+  /* confirm dialog - built as a plain DOM node by lib/confirmDialog.ts, so these rules must
+     stay unscoped to apply */
+  .confirm-dialog {
+    width: min(400px, 92vw);
+    background-color: var(--secondary);
+    color: white;
+    border: var(--accent) 1px solid;
+    padding: 18px 20px;
+    font-family: inherit;
+  }
+
+  .confirm-dialog::backdrop {
+    background-color: rgba(0, 0, 0, 0.6);
+  }
+
+  .confirm-message {
+    margin: 0 0 14px;
+    line-height: 1.4;
+  }
+
+  .confirm-skip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: lightgray;
+    font-size: 0.85em;
+    margin-bottom: 16px;
+    cursor: pointer;
+  }
+
+  .confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .confirm-actions button {
+    background-color: var(--accent);
+    color: var(--primary);
+    border: none;
+    padding: 7px 12px;
+    font-family: inherit;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .confirm-actions .confirm-cancel {
+    background-color: var(--tertiary);
+    color: lightgray;
+  }
+
+  .confirm-actions .confirm-ok.danger {
+    background-color: #e5455f;
+    color: white;
+  }
 </style>

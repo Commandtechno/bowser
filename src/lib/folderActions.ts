@@ -2,6 +2,7 @@
 // /api/list, /api/file, /api/folder, /api/entry endpoints - shared by Explorer.astro's
 // grid and Sidebar.astro's tree
 
+import { confirmAction } from "./confirmDialog";
 import type { TContextMenuItem } from "./contextMenu";
 import { downloadFolder, supportsFolderDownload } from "./downloadFolder";
 import { getCurrentPath, updatePath } from "./path";
@@ -25,8 +26,10 @@ const isPathWithin = (path: string[], prefix: string[]): boolean =>
   prefix.length <= path.length && prefix.every((seg, i) => path[i] === seg);
 
 // the parent dir (as a "/"-joined key, "" for root) of every affected path - both callers
-// (Explorer's grid, Sidebar's tree) key their fetch caches by that same "" | "a/b/c" shape
-const notifyFsChanged = (affectedPaths: string[][]): void => {
+// (Explorer's grid, Sidebar's tree) key their fetch caches by that same "" | "a/b/c" shape.
+// Exported so SettingsDialog.astro's History/Trash tabs can trigger the same refresh after a
+// revert/restore/purge, which can touch arbitrary paths outside the current view.
+export const notifyFsChanged = (affectedPaths: string[][]): void => {
   const parents = [...new Set(affectedPaths.map(p => p.slice(0, -1).join("/")))];
   window.dispatchEvent(new CustomEvent<{ parents: string[] }>("fsChanged", { detail: { parents } }));
 };
@@ -93,7 +96,13 @@ export const renameEntryInteractive = async (currentPath: string[], name: string
 };
 
 export const deleteEntryInteractive = async (currentPath: string[], name: string, isDir: boolean): Promise<void> => {
-  if (!window.confirm(`delete "${name}"? this can't be undone.`)) return;
+  const confirmed = await confirmAction({
+    message: `delete "${name}"? it'll be moved to trash and can be restored later.`,
+    confirmLabel: "delete",
+    danger: true,
+    key: "delete-entry"
+  });
+  if (!confirmed) return;
 
   const target = [...currentPath, name];
 

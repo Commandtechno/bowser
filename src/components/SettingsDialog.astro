@@ -3,6 +3,7 @@ import { PREVIEW_MODES } from "../lib/previewMode";
 import { ACCENT_PRESETS, SYNTAX_THEMES } from "../lib/themes";
 
 const user = Astro.locals.user!;
+const isAdmin = user.role === "admin";
 ---
 
 <dialog id="settings-dialog">
@@ -11,129 +12,169 @@ const user = Astro.locals.user!;
     <button class="close-btn" id="settings-close" aria-label="close">✕</button>
   </div>
 
-  <section>
-    <h3><span class="rule">──</span> appearance</h3>
-
-    <div class="row">
-      <label for="accent-input">accent color</label>
-      <div class="accent-controls">
-        <input type="color" id="accent-input" value={user.accentColor} />
-        {
-          ACCENT_PRESETS.map(color => (
-            <button class="swatch" data-color={color} style={`background-color: ${color}`} title={color} />
-          ))
-        }
-      </div>
+  <div class="settings-body">
+    <div class="tab-rail" role="tablist">
+      <button class="tab-btn active" type="button" data-tab="appearance">appearance</button>
+      <button class="tab-btn" type="button" data-tab="account">account</button>
+      <button class="tab-btn" type="button" data-tab="shares">share links</button>
+      {isAdmin && (
+        <button class="tab-btn" type="button" data-tab="users">users</button>
+      )}
+      <button class="tab-btn" type="button" data-tab="history">history</button>
+      <button class="tab-btn" type="button" data-tab="trash">trash</button>
     </div>
 
-    <div class="row">
-      <label for="theme-select">syntax highlighting</label>
-      <select id="theme-select">
-        {
-          SYNTAX_THEMES.map(theme => (
-            <option value={theme.id} selected={theme.id === user.syntaxTheme}>
-              {theme.label}
-            </option>
-          ))
-        }
-      </select>
-    </div>
+    <div class="tab-content">
+      <section class="tab-panel" data-tab="appearance">
+        <h3><span class="rule">──</span> appearance</h3>
 
-    <div class="row">
-      <label for="preview-mode-select">file previews</label>
-      <select id="preview-mode-select">
-        {
-          PREVIEW_MODES.map(mode => (
-            <option value={mode.id} selected={mode.id === user.previewMode}>
-              {mode.label}
-            </option>
-          ))
-        }
-      </select>
-    </div>
-  </section>
-
-  <section>
-    <h3><span class="rule">──</span> account</h3>
-
-    <div class="row">
-      <label>profile picture</label>
-      <div class="avatar-controls">
-        <div class="avatar-preview" id="avatar-preview">
-          {user.hasAvatar ? <img src={`/api/avatar?id=${user.id}`} alt="" /> : <span>{user.username.slice(0, 2).toUpperCase()}</span>}
-        </div>
-        <input type="file" id="avatar-file" accept="image/*" hidden />
-        <button class="btn" id="avatar-upload">upload</button>
-        <button class="btn subtle" id="avatar-remove" disabled={!user.hasAvatar}>remove</button>
-      </div>
-    </div>
-
-    <form id="password-form" class="stack">
-      <label for="pw-current">change password</label>
-      <input type="password" id="pw-current" placeholder="current password" autocomplete="current-password" required />
-      <input
-        type="password"
-        id="pw-new"
-        placeholder="new password (min 8 chars)"
-        autocomplete="new-password"
-        minlength="8"
-        required
-      />
-      <input type="password" id="pw-confirm" placeholder="confirm new password" autocomplete="new-password" required />
-      <div class="inline">
-        <button class="btn" type="submit">update password</button>
-        <span class="msg" id="pw-msg"></span>
-      </div>
-    </form>
-  </section>
-
-  <section id="shares-section">
-    <h3><span class="rule">──</span> share links</h3>
-
-    <label class="check show-expired">
-      <input type="checkbox" id="shares-show-expired" /> show expired
-    </label>
-
-    <div id="shares-list" class="users-list"></div>
-  </section>
-
-  {
-    user.role === "admin" && (
-      <section id="users-section">
-        <h3>
-          <span class="rule">──</span> users
-        </h3>
-
-        <div id="users-list" class="users-list"></div>
-
-        <form id="create-user-form" class="stack">
-          <label for="nu-username">add user</label>
-          <div class="inline wrap-sm">
-            <input type="text" id="nu-username" placeholder="username" autocomplete="off" required />
-            <input type="password" id="nu-password" placeholder="password" autocomplete="new-password" minlength="8" required />
-            <select id="nu-role">
-              <option value="readonly">readonly</option>
-              <option value="member" selected>
-                member
-              </option>
-              <option value="admin">admin</option>
-            </select>
-            <button class="btn" type="submit">create</button>
+        <div class="row">
+          <label for="accent-input">accent color</label>
+          <div class="accent-controls">
+            <input type="color" id="accent-input" value={user.accentColor} />
+            {
+              ACCENT_PRESETS.map(color => (
+                <button class="swatch" data-color={color} style={`background-color: ${color}`} title={color} />
+              ))
+            }
           </div>
-          <span class="msg" id="users-msg" />
+        </div>
+
+        <div class="row">
+          <label for="theme-select">syntax highlighting</label>
+          <select id="theme-select">
+            {
+              SYNTAX_THEMES.map(theme => (
+                <option value={theme.id} selected={theme.id === user.syntaxTheme}>
+                  {theme.label}
+                </option>
+              ))
+            }
+          </select>
+        </div>
+
+        <div class="row">
+          <label for="preview-mode-select">file previews</label>
+          <select id="preview-mode-select">
+            {
+              PREVIEW_MODES.map(mode => (
+                <option value={mode.id} selected={mode.id === user.previewMode}>
+                  {mode.label}
+                </option>
+              ))
+            }
+          </select>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-tab="account" hidden>
+        <h3><span class="rule">──</span> account</h3>
+
+        <div class="row">
+          <label>profile picture</label>
+          <div class="avatar-controls">
+            <div class="avatar-preview" id="avatar-preview">
+              {
+                user.hasAvatar ? (
+                  <img src={`/api/avatar?id=${user.id}`} alt="" />
+                ) : (
+                  <span>{user.username.slice(0, 2).toUpperCase()}</span>
+                )
+              }
+            </div>
+            <input type="file" id="avatar-file" accept="image/*" hidden />
+            <button class="btn" id="avatar-upload">upload</button>
+            <button class="btn subtle" id="avatar-remove" disabled={!user.hasAvatar}>remove</button>
+          </div>
+        </div>
+
+        <form id="password-form" class="stack">
+          <label for="pw-current">change password</label>
+          <input type="password" id="pw-current" placeholder="current password" autocomplete="current-password" required />
+          <input
+            type="password"
+            id="pw-new"
+            placeholder="new password (min 8 chars)"
+            autocomplete="new-password"
+            minlength="8"
+            required
+          />
+          <input type="password" id="pw-confirm" placeholder="confirm new password" autocomplete="new-password" required />
+          <div class="inline">
+            <button class="btn" type="submit">update password</button>
+            <span class="msg" id="pw-msg"></span>
+          </div>
         </form>
       </section>
-    )
-  }
+
+      <section class="tab-panel" id="shares-section" data-tab="shares" hidden>
+        <h3><span class="rule">──</span> share links</h3>
+
+        <label class="check show-expired">
+          <input type="checkbox" id="shares-show-expired" /> show expired
+        </label>
+
+        <div id="shares-list" class="entries-list"></div>
+      </section>
+
+      {
+        isAdmin && (
+          <section class="tab-panel" id="users-section" data-tab="users" hidden>
+            <h3>
+              <span class="rule">──</span> users
+            </h3>
+
+            <div id="users-list" class="entries-list"></div>
+
+            <form id="create-user-form" class="stack">
+              <label for="nu-username">add user</label>
+              <div class="inline wrap-sm">
+                <input type="text" id="nu-username" placeholder="username" autocomplete="off" required />
+                <input type="password" id="nu-password" placeholder="password" autocomplete="new-password" minlength="8" required />
+                <select id="nu-role">
+                  <option value="readonly">readonly</option>
+                  <option value="member" selected>
+                    member
+                  </option>
+                  <option value="admin">admin</option>
+                </select>
+                <button class="btn" type="submit">create</button>
+              </div>
+              <span class="msg" id="users-msg" />
+            </form>
+          </section>
+        )
+      }
+
+      <section class="tab-panel" id="history-section" data-tab="history" hidden>
+        <h3><span class="rule">──</span> history</h3>
+        <p class="hint">every create, upload, rename, move and delete, in order. reverting undoes everything after that point.</p>
+        <div id="history-list" class="entries-list"></div>
+        <div class="inline" id="history-more-wrap" hidden>
+          <button class="btn subtle" id="history-more" type="button">load more</button>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="trash-section" data-tab="trash" hidden>
+        <div class="trash-head">
+          <h3><span class="rule">──</span> trash</h3>
+          <button class="btn subtle" id="trash-empty" type="button" hidden>empty trash</button>
+        </div>
+        <div id="trash-list" class="entries-list"></div>
+      </section>
+    </div>
+  </div>
 </dialog>
 
-<script define:vars={{ currentUserId: user.id, isAdmin: user.role === "admin" }}>
+<script define:vars={{ currentUserId: user.id, isAdmin }}>
   window.__currentUserId = currentUserId;
   window.__isAdmin = isAdmin;
 </script>
 
 <script>
   import { html, render } from "lit-html";
+  import { confirmAction } from "../lib/confirmDialog";
+  import { notifyFsChanged } from "../lib/folderActions";
   import { showToast } from "../lib/toast";
 
   declare global {
@@ -159,6 +200,19 @@ const user = Astro.locals.user!;
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body)
     });
+
+  // ---- tabs ----
+
+  const $tabButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".tab-btn"));
+  const $tabPanels = Array.from(document.querySelectorAll<HTMLElement>(".tab-panel"));
+
+  for (const btn of $tabButtons) {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab!;
+      for (const b of $tabButtons) b.classList.toggle("active", b === btn);
+      for (const panel of $tabPanels) panel.hidden = panel.dataset.tab !== tab;
+    });
+  }
 
   // ---- accent color ----
 
@@ -275,6 +329,8 @@ const user = Astro.locals.user!;
     createdByUsername: string;
     createdAt: number;
     expiresAt: number;
+    protocol: string | null;
+    servePort: number | null;
   };
 
   const $sharesList = document.getElementById("shares-list")!;
@@ -307,7 +363,13 @@ const user = Astro.locals.user!;
   };
 
   const revokeShare = async (s: TShareEntry) => {
-    if (!confirm(`revoke the share link for "/${s.path || ""}"?`)) return;
+    const confirmed = await confirmAction({
+      message: `revoke the share link for "/${s.path || ""}"?`,
+      confirmLabel: "revoke",
+      danger: true,
+      key: "revoke-share"
+    });
+    if (!confirmed) return;
     const res = await fetch(`/api/shares?token=${encodeURIComponent(s.token)}`, { method: "DELETE" });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -326,14 +388,17 @@ const user = Astro.locals.user!;
         const expired = isExpired(s);
         const canRevoke = s.createdBy === currentUserId || isAdmin;
         return html`
-          <div class="share-row">
-            <div class="share-info">
+          <div class="entry-row">
+            <div class="entry-info">
               <span class="row-name" title=${`/${s.path}`}>/${s.path || "(root)"}</span>
               <span class="row-role"
                 >shared by ${s.createdByUsername} · ${new Date(s.createdAt * 1000).toLocaleDateString()} ·
                 ${expired
                   ? html`<span class="expired-badge">expired</span>`
-                  : `expires ${new Date(s.expiresAt * 1000).toLocaleString()}`}</span
+                  : `expires ${new Date(s.expiresAt * 1000).toLocaleString()}`}
+                ${s.protocol && !expired
+                  ? html` · <span class="protocol-badge">${s.protocol} :${s.servePort}</span>`
+                  : ""}</span
               >
             </div>
             <div class="row-actions">
@@ -350,7 +415,6 @@ const user = Astro.locals.user!;
   };
 
   $showExpired.addEventListener("change", loadShares);
-  window.addEventListener("settingsOpen", loadShares);
   window.addEventListener("shareLinksChanged", loadShares);
 
   // ---- user management (only rendered for admins) ----
@@ -369,6 +433,10 @@ const user = Astro.locals.user!;
 
   const ROLES: TRole[] = ["readonly", "member", "admin"];
 
+  // reassigned below when $usersList exists (admins only) - a harmless no-op otherwise, so
+  // the settingsOpen handler at the bottom of this script can call it unconditionally
+  let loadUsers: () => Promise<void> = async () => {};
+
   if ($usersList) {
     const $createForm = document.getElementById("create-user-form") as HTMLFormElement;
     const $nuUsername = document.getElementById("nu-username") as HTMLInputElement;
@@ -378,18 +446,7 @@ const user = Astro.locals.user!;
 
     // every state must go through lit-html's render: writing textContent directly would
     // destroy lit's part markers and break all subsequent renders into this container
-    let loaded = false;
-    const loadUsers = async () => {
-      if (!loaded) render(html`<span class="dim">loading...</span>`, $usersList);
-      const res = await fetch("/api/users");
-      if (!res.ok) {
-        render(html`<span class="dim">failed to load users</span>`, $usersList);
-        return;
-      }
-      const { users } = (await res.json()) as { users: TUserEntry[] };
-      loaded = true;
-      renderUsers(users);
-    };
+    let usersLoaded = false;
 
     const act = async (req: Promise<Response>, okMsg: string) => {
       const res = await req;
@@ -427,8 +484,14 @@ const user = Astro.locals.user!;
       );
     };
 
-    const deleteUser = (u: TUserEntry) => {
-      if (!confirm(`delete ${u.username}? this cannot be undone.`)) return;
+    const deleteUser = async (u: TUserEntry) => {
+      const confirmed = await confirmAction({
+        message: `delete ${u.username}? this cannot be undone.`,
+        confirmLabel: "delete",
+        danger: true,
+        key: "delete-user"
+      });
+      if (!confirmed) return;
       act(fetch(`/api/users?id=${u.id}`, { method: "DELETE" }), `deleted ${u.username}`);
     };
 
@@ -437,7 +500,7 @@ const user = Astro.locals.user!;
         html`${users.map(u => {
           const isSelf = u.id === currentUserId;
           return html`
-            <div class="user-row">
+            <div class="entry-row">
               <div class="row-avatar">
                 ${u.hasAvatar
                   ? html`<img src=${`/api/avatar?id=${u.id}&t=${Date.now()}`} alt="" />`
@@ -465,6 +528,18 @@ const user = Astro.locals.user!;
       );
     };
 
+    loadUsers = async () => {
+      if (!usersLoaded) render(html`<span class="dim">loading...</span>`, $usersList);
+      const res = await fetch("/api/users");
+      if (!res.ok) {
+        render(html`<span class="dim">failed to load users</span>`, $usersList);
+        return;
+      }
+      const { users } = (await res.json()) as { users: TUserEntry[] };
+      usersLoaded = true;
+      renderUsers(users);
+    };
+
     $createForm.addEventListener("submit", e => {
       e.preventDefault();
       act(
@@ -480,20 +555,311 @@ const user = Astro.locals.user!;
         `created ${$nuUsername.value}`
       ).then(() => $createForm.reset());
     });
-
-    window.addEventListener("settingsOpen", loadUsers);
   }
+
+  // ---- history (audit log) ----
+
+  type TAuditAction = "create_folder" | "upload" | "move" | "delete" | "restore" | "purge";
+
+  type TAuditEntry = {
+    id: number;
+    userId: number;
+    username: string;
+    action: TAuditAction;
+    path: string;
+    detail: string | null;
+    undoneAt: number | null;
+    undoneBy: number | null;
+    undoneByUsername: string | null;
+    purgedAt: number | null;
+    purgedBy: number | null;
+    purgedByUsername: string | null;
+    createdAt: number;
+  };
+
+  const $historyList = document.getElementById("history-list")!;
+  const $historyMoreWrap = document.getElementById("history-more-wrap")!;
+  const $historyMore = document.getElementById("history-more")!;
+
+  const fmtSize = (n: number | null | undefined): string => {
+    if (n == null) return "";
+    if (n < 1024) return `${n} B`;
+    const units = ["KB", "MB", "GB", "TB"];
+    let v = n / 1024;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) {
+      v /= 1024;
+      i++;
+    }
+    return `${v.toFixed(1)} ${units[i]}`;
+  };
+
+  const baseName = (path: string): string => path.split("/").filter(Boolean).pop() ?? path;
+
+  const describeEntry = (e: TAuditEntry): string => {
+    const detail = e.detail ? JSON.parse(e.detail) : null;
+    switch (e.action) {
+      case "create_folder":
+        return `created folder "/${e.path}"`;
+      case "upload":
+        return `uploaded "${baseName(e.path)}"${detail?.size != null ? ` (${fmtSize(detail.size)})` : ""}`;
+      case "move": {
+        const { from, to } = detail as { from: string; to: string };
+        const sameParent = from.split("/").slice(0, -1).join("/") === to.split("/").slice(0, -1).join("/");
+        return sameParent
+          ? `renamed "${baseName(from)}" to "${baseName(to)}"`
+          : `moved "/${from}" to "/${to}"`;
+      }
+      case "delete":
+        return `deleted "/${e.path}"`;
+      case "restore": {
+        const { restoredPath } = detail as { restoredPath: string };
+        return `restored "/${restoredPath}"`;
+      }
+      case "purge":
+        return `permanently deleted "/${e.path}"`;
+    }
+  };
+
+  const canRevert = (e: TAuditEntry): boolean => isAdmin && !e.undoneAt && !e.purgedAt && e.action !== "purge";
+
+  // affected parent dirs from every entry in `list` whose id is in `ids` - used to refresh
+  // Explorer/Sidebar after a revert, which can touch paths well outside the current view
+  const affectedPaths = (list: TAuditEntry[], ids: number[]): string[][] => {
+    const paths: string[][] = [];
+    for (const e of list) {
+      if (!ids.includes(e.id)) continue;
+      paths.push(e.path.split("/").filter(Boolean));
+      if (e.action === "move" && e.detail) {
+        const { from } = JSON.parse(e.detail) as { from: string };
+        paths.push(from.split("/").filter(Boolean));
+      }
+    }
+    return paths;
+  };
+
+  let historyEntries: TAuditEntry[] = [];
+  let historyHasMore = false;
+  let historyLoaded = false;
+
+  const loadHistory = async (reset: boolean) => {
+    if (reset) {
+      if (!historyLoaded) render(html`<span class="dim">loading...</span>`, $historyList);
+      historyEntries = [];
+    }
+    const beforeId = reset ? undefined : historyEntries.at(-1)?.id;
+    const res = await fetch(beforeId ? `/api/audit?beforeId=${beforeId}` : "/api/audit");
+    if (!res.ok) {
+      render(html`<span class="dim">failed to load history</span>`, $historyList);
+      return;
+    }
+    const { entries, hasMore } = (await res.json()) as { entries: TAuditEntry[]; hasMore: boolean };
+    historyLoaded = true;
+    historyEntries = reset ? entries : [...historyEntries, ...entries];
+    historyHasMore = hasMore;
+    renderHistory();
+  };
+
+  const revertToHere = async (e: TAuditEntry) => {
+    const confirmed = await confirmAction({
+      message: `revert to just after "${describeEntry(e)}"? every action since then will be undone.`,
+      confirmLabel: "revert",
+      danger: true,
+      key: "revert-history"
+    });
+    if (!confirmed) return;
+    const res = await fetch("/api/audit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: e.id })
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      showToast(body.error ?? "revert failed", "error");
+      return;
+    }
+    const result = (await res.json()) as { reverted: number[]; failedAt?: { id: number; error: string } };
+    notifyFsChanged(affectedPaths(historyEntries, result.reverted));
+    if (result.failedAt) {
+      showToast(`reverted ${result.reverted.length} action(s), then stopped: ${result.failedAt.error}`, "error");
+    } else {
+      showToast(`reverted ${result.reverted.length} action(s)`, "success");
+    }
+    loadHistory(true);
+    loadTrash();
+  };
+
+  const renderHistory = () => {
+    $historyMoreWrap.hidden = !historyHasMore;
+    if (historyEntries.length === 0) {
+      render(html`<span class="dim">no activity yet</span>`, $historyList);
+      return;
+    }
+    render(
+      html`${historyEntries.map(e => {
+        const settled = e.undoneAt || e.purgedAt;
+        return html`
+          <div class="entry-row ${settled ? "settled" : ""}">
+            <div class="entry-info">
+              <span class="row-name">${describeEntry(e)}</span>
+              <span class="row-role">
+                ${e.username} · ${new Date(e.createdAt * 1000).toLocaleString()}
+                ${e.undoneAt ? html` · <span class="settled-badge">reverted by ${e.undoneByUsername}</span>` : ""}
+                ${e.purgedAt ? html` · <span class="settled-badge">purged by ${e.purgedByUsername}</span>` : ""}
+              </span>
+            </div>
+            ${canRevert(e)
+              ? html`<div class="row-actions">
+                  <button class="mini" title="revert to here" @click=${() => revertToHere(e)}>revert to here</button>
+                </div>`
+              : ""}
+          </div>
+        `;
+      })}`,
+      $historyList
+    );
+  };
+
+  $historyMore.addEventListener("click", () => loadHistory(false));
+
+  // ---- trash ----
+
+  type TDeleteDetail = { trashId: string; isDir: boolean; size: number | null };
+
+  const $trashList = document.getElementById("trash-list")!;
+  const $trashEmpty = document.getElementById("trash-empty") as HTMLButtonElement;
+
+  let trashItems: TAuditEntry[] = [];
+  let trashLoaded = false;
+
+  const loadTrash = async () => {
+    if (!trashLoaded) render(html`<span class="dim">loading...</span>`, $trashList);
+    const res = await fetch("/api/trash");
+    if (!res.ok) {
+      render(html`<span class="dim">failed to load trash</span>`, $trashList);
+      return;
+    }
+    const { items } = (await res.json()) as { items: TAuditEntry[] };
+    trashLoaded = true;
+    trashItems = items;
+    renderTrash();
+  };
+
+  const restoreTrashItem = async (e: TAuditEntry) => {
+    const res = await fetch("/api/trash", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: e.id })
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      showToast(body.error ?? "restore failed", "error");
+      return;
+    }
+    const { path } = (await res.json()) as { path: string };
+    notifyFsChanged([e.path.split("/").filter(Boolean), path.split("/").filter(Boolean)]);
+    showToast(`restored to "/${path}"`, "success");
+    loadTrash();
+    loadHistory(true);
+  };
+
+  const purgeTrashItem = async (e: TAuditEntry) => {
+    const confirmed = await confirmAction({
+      message: `permanently delete "${baseName(e.path)}"? this cannot be undone.`,
+      confirmLabel: "delete forever",
+      danger: true,
+      key: "purge-trash-item"
+    });
+    if (!confirmed) return;
+    const res = await fetch(`/api/trash?id=${e.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      showToast(body.error ?? "delete failed", "error");
+      return;
+    }
+    showToast(`"${baseName(e.path)}" permanently deleted`, "success");
+    loadTrash();
+    loadHistory(true);
+  };
+
+  $trashEmpty.addEventListener("click", async () => {
+    const confirmed = await confirmAction({
+      message: "permanently delete everything in trash? this cannot be undone.",
+      confirmLabel: "empty trash",
+      danger: true,
+      key: "empty-trash"
+    });
+    if (!confirmed) return;
+    const res = await fetch("/api/trash?all=1", { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      showToast(body.error ?? "failed to empty trash", "error");
+      return;
+    }
+    const { purged } = (await res.json()) as { purged: number };
+    showToast(`emptied trash (${purged} item${purged === 1 ? "" : "s"})`, "success");
+    loadTrash();
+    loadHistory(true);
+  });
+
+  const renderTrash = () => {
+    $trashEmpty.hidden = !isAdmin || trashItems.length === 0;
+    if (trashItems.length === 0) {
+      render(html`<span class="dim">trash is empty</span>`, $trashList);
+      return;
+    }
+    render(
+      html`${trashItems.map(e => {
+        const d = JSON.parse(e.detail!) as TDeleteDetail;
+        return html`
+          <div class="entry-row">
+            <div class="entry-info">
+              <span class="row-name" title=${`/${e.path}`}>${d.isDir ? "📁" : "📄"} ${baseName(e.path)}</span>
+              <span class="row-role">
+                deleted by ${e.username} · ${new Date(e.createdAt * 1000).toLocaleString()}
+                ${d.size != null ? ` · ${fmtSize(d.size)}` : ""}
+              </span>
+            </div>
+            ${isAdmin
+              ? html`<div class="row-actions">
+                  <button class="mini" title="restore" @click=${() => restoreTrashItem(e)}>restore</button>
+                  <button class="mini danger" title="delete forever" @click=${() => purgeTrashItem(e)}>delete forever</button>
+                </div>`
+              : ""}
+          </div>
+        `;
+      })}`,
+      $trashList
+    );
+  };
+
+  // ---- load everything fresh whenever the dialog opens ----
+
+  window.addEventListener("settingsOpen", () => {
+    loadShares();
+    loadUsers();
+    loadHistory(true);
+    loadTrash();
+  });
 </script>
 
 <style>
   #settings-dialog {
-    width: min(560px, 92vw);
+    width: min(760px, 94vw);
     max-height: 85vh;
     background-color: var(--secondary);
     color: white;
     border: var(--accent) 1px solid;
     padding: 20px 24px;
     font-family: inherit;
+  }
+
+  /* dialog elements default to display:none until [open] is set by showModal()/show() - the
+     unqualified rule above must never set `display`, or the dialog would render before it's
+     opened. Flex layout only kicks in once it's actually shown. */
+  #settings-dialog[open] {
+    display: flex;
+    flex-direction: column;
   }
 
   #settings-dialog::backdrop {
@@ -504,6 +870,7 @@ const user = Astro.locals.user!;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0;
   }
 
   .dialog-head h2 {
@@ -525,8 +892,56 @@ const user = Astro.locals.user!;
     background-color: var(--tertiary);
   }
 
+  .settings-body {
+    display: flex;
+    gap: 18px;
+    margin-top: 16px;
+    min-height: 0;
+    flex: 1;
+  }
+
+  .tab-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex-shrink: 0;
+    width: 132px;
+  }
+
+  .tab-btn {
+    all: unset;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    color: darkgray;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.92em;
+  }
+
+  .tab-btn:hover {
+    background-color: var(--tertiary);
+    color: white;
+  }
+
+  .tab-btn.active {
+    background-color: var(--tertiary);
+    color: var(--accent);
+    font-weight: bold;
+  }
+
+  .tab-content {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .tab-panel[hidden] {
+    display: none;
+  }
+
   section {
-    margin-top: 18px;
+    margin-top: 0;
   }
 
   h3 {
@@ -535,6 +950,12 @@ const user = Astro.locals.user!;
 
   .rule {
     color: var(--accent);
+  }
+
+  .hint {
+    color: darkgray;
+    margin: -4px 0 14px;
+    font-size: 0.85em;
   }
 
   .row {
@@ -670,29 +1091,62 @@ const user = Astro.locals.user!;
     color: lightgray;
   }
 
-  .users-list {
+  .entries-list {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    max-height: 240px;
+    max-height: 50vh;
     overflow-y: auto;
     color: darkgray;
+  }
+
+  .trash-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .trash-head h3 {
+    margin: 0;
   }
 
   .show-expired {
     margin: 4px 0 10px;
   }
+
+  @media screen and (max-width: 600px) {
+    .settings-body {
+      flex-direction: column;
+    }
+
+    .tab-rail {
+      flex-direction: row;
+      width: auto;
+      overflow-x: auto;
+      gap: 4px;
+    }
+
+    .tab-btn {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+  }
 </style>
 
 <style is:global>
-  /* user rows are rendered client-side via lit-html, so these rules must stay unscoped */
-  #settings-dialog .user-row {
+  /* dynamic rows are rendered client-side via lit-html, so these rules must stay unscoped */
+  #settings-dialog .entry-row {
     display: flex;
     align-items: center;
     gap: 10px;
     padding: 6px 8px;
     background-color: var(--primary);
     color: white;
+  }
+
+  #settings-dialog .entry-row.settled {
+    opacity: 0.55;
   }
 
   #settings-dialog .row-avatar {
@@ -725,11 +1179,6 @@ const user = Astro.locals.user!;
     white-space: nowrap;
   }
 
-  #settings-dialog .row-role {
-    color: darkgray;
-    font-size: 0.85em;
-  }
-
   #settings-dialog .role-select {
     flex-shrink: 0;
     background-color: var(--tertiary);
@@ -752,17 +1201,7 @@ const user = Astro.locals.user!;
     flex-shrink: 0;
   }
 
-  #settings-dialog .share-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 6px 8px;
-    background-color: var(--primary);
-    color: white;
-  }
-
-  #settings-dialog .share-info {
+  #settings-dialog .entry-info {
     flex: 1;
     min-width: 0;
     display: flex;
@@ -770,14 +1209,31 @@ const user = Astro.locals.user!;
     gap: 2px;
   }
 
-  #settings-dialog .share-info .row-name {
+  #settings-dialog .entry-info .row-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  #settings-dialog .expired-badge {
+  #settings-dialog .row-role {
+    color: darkgray;
+    font-size: 0.85em;
+  }
+
+  #settings-dialog .expired-badge,
+  #settings-dialog .settled-badge {
     color: #ff6b81;
+  }
+
+  #settings-dialog .protocol-badge {
+    color: var(--primary);
+    background-color: var(--accent);
+    font-weight: bold;
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 1px 6px;
+    border-radius: 2px;
   }
 
   #settings-dialog .mini {

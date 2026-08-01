@@ -8,6 +8,8 @@ export type TShareLink = {
   createdByUsername: string;
   createdAt: number;
   expiresAt: number;
+  protocol: string | null;
+  servePort: number | null;
 };
 
 const now = (): number => Math.floor(Date.now() / 1000);

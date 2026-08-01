@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { logUpload } from "../../lib/auditLog";
 import { canWrite } from "../../lib/db";
 import { InvalidPathError, PHOTOS_DIR, writeUploadedFile } from "../../lib/media";
 
@@ -16,7 +17,9 @@ export const PUT: APIRoute = async ({ request, url, locals }) => {
   if (!request.body) return json(400, { error: "missing body" });
 
   try {
-    const { name } = await writeUploadedFile(PHOTOS_DIR, path, request.body);
+    const { name, size } = await writeUploadedFile(PHOTOS_DIR, path, request.body);
+    const parentRel = path.split("/").filter(Boolean).slice(0, -1).join("/");
+    await logUpload(locals.user!.id, parentRel ? `${parentRel}/${name}` : name, size);
     return json(201, { ok: true, name });
   } catch (e) {
     if (e instanceof InvalidPathError) return json(400, { error: e.message });

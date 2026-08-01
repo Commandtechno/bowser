@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { logCreateFolder } from "../../lib/auditLog";
 import { canWrite } from "../../lib/db";
 import { createFolder, InvalidPathError, PHOTOS_DIR } from "../../lib/media";
 
@@ -26,5 +27,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
     throw e;
   }
 
+  await logCreateFolder(locals.user!.id, path);
   return json(201, { ok: true });
 };

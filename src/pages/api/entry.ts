@@ -1,11 +1,13 @@
 import type { APIRoute } from "astro";
+import { logMove, softDelete } from "../../lib/auditLog";
 import { canWrite } from "../../lib/db";
-import { deleteEntry, EntryExistsError, InvalidPathError, moveEntry, PHOTOS_DIR } from "../../lib/media";
+import { EntryExistsError, InvalidPathError, moveEntry, PHOTOS_DIR } from "../../lib/media";
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-// deletes a file or folder (recursively)
+// soft-deletes a file or folder (recursively) - moved into trash, not actually removed;
+// see src/lib/auditLog.ts
 export const DELETE: APIRoute = async ({ url, locals }) => {
   if (!canWrite(locals.user!)) return json(403, { error: "read-only account" });
 
@@ -13,7 +15,7 @@ export const DELETE: APIRoute = async ({ url, locals }) => {
   if (!path) return json(400, { error: "path is required" });
 
   try {
-    await deleteEntry(PHOTOS_DIR, path);
+    await softDelete(locals.user!.id, path);
   } catch (e) {
     if (e instanceof InvalidPathError) return json(400, { error: e.message });
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return json(404, { error: "not found" });
@@ -47,5 +49,6 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
     throw e;
   }
 
+  await logMove(locals.user!.id, path, to);
   return json(200, { ok: true });
 };
