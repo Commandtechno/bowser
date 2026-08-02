@@ -1,7 +1,7 @@
 /// <reference types="astro/client" />
 
 interface ImportMetaEnv {
-  readonly PHOTOS_DIR: string;
+  readonly ROOT_DIR: string;
   readonly THUMBS_DIR?: string;
   readonly DB_PATH?: string;
 }

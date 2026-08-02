@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { getMeta } from "../../lib/meta";
 import { classifyMedia } from "../../lib/mediaKind";
-import { InvalidPathError, PHOTOS_DIR, resolveInDir } from "../../lib/media";
+import { InvalidPathError, ROOT_DIR, resolveInDir } from "../../lib/media";
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -12,7 +12,7 @@ export const GET: APIRoute = async ({ url }) => {
 
   let filePath: string;
   try {
-    filePath = resolveInDir(PHOTOS_DIR, relPath);
+    filePath = resolveInDir(ROOT_DIR, relPath);
   } catch (e) {
     if (e instanceof InvalidPathError) return json(400, { error: "invalid path" });
     throw e;

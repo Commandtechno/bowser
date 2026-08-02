@@ -61,7 +61,7 @@ export const shareLinks = sqliteTable(
 
 // create_folder/upload/move: undoing them soft-deletes/moves the path back. delete: a trash
 // entry while undoneAt/purgedAt are both unset - detail.trashId names its folder under
-// PHOTOS_DIR/.trash. restore: the inverse of a delete. purge: emptying trash, terminal (never
+// ROOT_DIR/.trash. restore: the inverse of a delete. purge: emptying trash, terminal (never
 // itself undoable). See src/lib/auditLog.ts for the per-action `detail` JSON shapes.
 export const AUDIT_ACTIONS = ["create_folder", "upload", "move", "delete", "restore", "purge"] as const;
 export type TAuditAction = (typeof AUDIT_ACTIONS)[number];

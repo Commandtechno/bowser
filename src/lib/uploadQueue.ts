@@ -7,7 +7,7 @@ export type TUploadStatus = "queued" | "uploading" | "retrying" | "done" | "erro
 export type TUploadItem = {
   id: number;
   file: File;
-  relPath: string; // full destination path within PHOTOS_DIR, "/"-joined
+  relPath: string; // full destination path within ROOT_DIR, "/"-joined
   status: TUploadStatus;
   loaded: number;
   size: number;

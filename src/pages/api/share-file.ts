@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { InvalidPathError, PHOTOS_DIR, resolveInDir, serveFile } from "../../lib/media";
+import { InvalidPathError, ROOT_DIR, resolveInDir, serveFile } from "../../lib/media";
 import { getShareLink, isShareLinkExpired, resolveSharePath } from "../../lib/shareLinks";
 
 export const GET: APIRoute = async ({ url, request }) => {
@@ -13,7 +13,7 @@ export const GET: APIRoute = async ({ url, request }) => {
 
   let filePath: string;
   try {
-    filePath = resolveInDir(PHOTOS_DIR, relPath);
+    filePath = resolveInDir(ROOT_DIR, relPath);
   } catch (e) {
     if (e instanceof InvalidPathError) return new Response(null, { status: 400 });
     throw e;

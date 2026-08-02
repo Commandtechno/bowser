@@ -846,7 +846,9 @@ const isAdmin = user.role === "admin";
 <style>
   #settings-dialog {
     width: min(760px, 94vw);
-    max-height: 85vh;
+    /* fixed, not max-height - the dialog must stay the same size across every tab so
+       switching tabs never shifts the outer box, only the scrollable content inside it */
+    height: min(600px, 85vh);
     background-color: var(--secondary);
     color: white;
     border: var(--accent) 1px solid;
@@ -1095,8 +1097,6 @@ const isAdmin = user.role === "admin";
     display: flex;
     flex-direction: column;
     gap: 4px;
-    max-height: 50vh;
-    overflow-y: auto;
     color: darkgray;
   }
 

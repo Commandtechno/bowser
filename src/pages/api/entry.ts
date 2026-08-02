@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { logMove, softDelete } from "../../lib/auditLog";
 import { canWrite } from "../../lib/db";
-import { EntryExistsError, InvalidPathError, moveEntry, PHOTOS_DIR } from "../../lib/media";
+import { EntryExistsError, InvalidPathError, moveEntry, ROOT_DIR } from "../../lib/media";
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -41,7 +41,7 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
   if (typeof to !== "string" || !to) return json(400, { error: "to is required" });
 
   try {
-    await moveEntry(PHOTOS_DIR, path, to);
+    await moveEntry(ROOT_DIR, path, to);
   } catch (e) {
     if (e instanceof InvalidPathError) return json(400, { error: e.message });
     if (e instanceof EntryExistsError) return json(409, { error: e.message });

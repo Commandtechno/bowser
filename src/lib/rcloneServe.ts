@@ -9,7 +9,7 @@ import {
   deleteShareServe,
   type TShareServeRow
 } from "./db";
-import { PHOTOS_DIR, resolveInDir } from "./media";
+import { ROOT_DIR, resolveInDir } from "./media";
 
 // optional integration: a share link can also be exposed over a real file-transfer protocol
 // via `rclone serve`, scoped read-only to the share's folder, using the share's own
@@ -115,7 +115,7 @@ const reconcileServeProcesses = async (): Promise<void> => {
   const rows = await listActiveShareServes();
   for (const row of rows) {
     try {
-      const absPath = resolveInDir(PHOTOS_DIR, row.path);
+      const absPath = resolveInDir(ROOT_DIR, row.path);
       const { port } = await startServeProcess(row.token, row.protocol as TProtocol, absPath, {
         port: row.port,
         password: row.password

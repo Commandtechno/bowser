@@ -11,7 +11,7 @@ if (invalid) Astro.response.status = 404;
 const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "shared folder") : "";
 ---
 
-<Layout title={invalid ? "Link expired - Technobowser" : `${rootName} (shared) - Technobowser`}>
+<Layout title={invalid ? "Link expired - Bowser" : `${rootName} (shared) - Bowser`}>
   {
     invalid ? (
       <div class="wrap">

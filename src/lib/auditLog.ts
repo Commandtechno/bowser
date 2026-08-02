@@ -16,7 +16,7 @@ import {
   markAuditLogUndone,
   type TAuditLogRow
 } from "./db";
-import { InvalidPathError, moveEntry, PHOTOS_DIR, resolveInDir, TRASH_DIR, uniqueName } from "./media";
+import { InvalidPathError, moveEntry, ROOT_DIR, resolveInDir, TRASH_DIR, uniqueName } from "./media";
 
 export type { TAuditLogRow };
 
@@ -57,8 +57,8 @@ export const logMove = (userId: number, from: string, to: string): Promise<numbe
 // moves `path` into TRASH_DIR under a fresh uuid and logs a `delete` row - used both by
 // DELETE /api/entry and as the inverse of create_folder/upload/restore during a revert
 export const softDelete = async (userId: number, path: string): Promise<number> => {
-  const targetPath = resolveInDir(PHOTOS_DIR, path);
-  if (targetPath === PHOTOS_DIR) throw new InvalidPathError("cannot delete the root directory");
+  const targetPath = resolveInDir(ROOT_DIR, path);
+  if (targetPath === ROOT_DIR) throw new InvalidPathError("cannot delete the root directory");
 
   const st = await stat(targetPath);
   const isDir = st.isDirectory();
@@ -81,7 +81,7 @@ export const restoreFromTrash = async (userId: number, logId: number): Promise<{
 
   const { trashId } = detailOf<TDeleteDetail>(row);
   const parentRel = parentOf(row.path);
-  const parentAbs = resolveInDir(PHOTOS_DIR, parentRel);
+  const parentAbs = resolveInDir(ROOT_DIR, parentRel);
   await mkdir(parentAbs, { recursive: true });
 
   const name = await uniqueName(parentAbs, basename(row.path));
@@ -136,7 +136,7 @@ export const revertEntry = async (userId: number, logId: number): Promise<number
     }
     case "move": {
       const { from, to } = detailOf<TMoveDetail>(row);
-      await moveEntry(PHOTOS_DIR, to, from);
+      await moveEntry(ROOT_DIR, to, from);
       const newLogId = await insert(userId, "move", from, { from: to, to: from } satisfies TMoveDetail);
       await markAuditLogUndone(logId, userId);
       return newLogId;

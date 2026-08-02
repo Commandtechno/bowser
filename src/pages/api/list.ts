@@ -1,11 +1,11 @@
 import type { APIRoute } from "astro";
-import { InvalidPathError, PHOTOS_DIR, listDir } from "../../lib/media";
+import { InvalidPathError, ROOT_DIR, listDir } from "../../lib/media";
 
 export const GET: APIRoute = async ({ url }) => {
   const relPath = url.searchParams.get("path") ?? "";
 
   try {
-    const listing = await listDir(PHOTOS_DIR, relPath);
+    const listing = await listDir(ROOT_DIR, relPath);
     return new Response(JSON.stringify(listing), {
       headers: { "content-type": "application/json", "cache-control": "private, max-age=60" }
     });

@@ -1,8 +1,8 @@
 ---
-import { PHOTOS_DIR, listDir } from "../lib/media";
+import { ROOT_DIR, listDir } from "../lib/media";
 import UserPanel from "./UserPanel.astro";
 
-const { dirs: rootDirs } = await listDir(PHOTOS_DIR, "");
+const { dirs: rootDirs } = await listDir(ROOT_DIR, "");
 ---
 
 <div class="sidebar">

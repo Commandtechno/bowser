@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import sharp from "sharp";
-import { InvalidPathError, PHOTOS_DIR, THUMBS_DIR, resolveInDir } from "../../lib/media";
+import { InvalidPathError, ROOT_DIR, THUMBS_DIR, resolveInDir } from "../../lib/media";
 import { classifyMedia } from "../../lib/mediaKind";
 import { extractRawPreview } from "../../lib/preview";
 
@@ -19,7 +19,7 @@ export const GET: APIRoute = async ({ url }) => {
   let sourcePath: string;
   let previewPath: string;
   try {
-    sourcePath = resolveInDir(PHOTOS_DIR, relPath);
+    sourcePath = resolveInDir(ROOT_DIR, relPath);
     previewPath = resolveInDir(THUMBS_DIR, relPath) + ".preview.jpg";
   } catch (e) {
     if (e instanceof InvalidPathError) return new Response(null, { status: 400 });

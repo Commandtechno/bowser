@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { logCreateFolder } from "../../lib/auditLog";
 import { canWrite } from "../../lib/db";
-import { createFolder, InvalidPathError, PHOTOS_DIR } from "../../lib/media";
+import { createFolder, InvalidPathError, ROOT_DIR } from "../../lib/media";
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -19,7 +19,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
   if (typeof path !== "string" || !path) return json(400, { error: "path is required" });
 
   try {
-    await createFolder(PHOTOS_DIR, path);
+    await createFolder(ROOT_DIR, path);
   } catch (e) {
     if (e instanceof InvalidPathError) return json(400, { error: e.message });
     if ((e as NodeJS.ErrnoException).code === "EEXIST") return json(409, { error: "a folder with that name already exists" });

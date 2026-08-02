@@ -155,7 +155,7 @@ export const moveEntryTo = async (source: TMoveSource, destDir: string[]): Promi
 };
 
 export const downloadAppFolder = async (dirPath: string[]): Promise<void> => {
-  const name = dirPath.at(-1) ?? "photos";
+  const name = dirPath.at(-1) ?? "files";
   try {
     await downloadFolder(
       name,

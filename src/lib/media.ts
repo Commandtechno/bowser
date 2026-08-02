@@ -5,12 +5,12 @@ import { join, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-export const PHOTOS_DIR = resolve(import.meta.env.PHOTOS_DIR || "./photos");
+export const ROOT_DIR = resolve(import.meta.env.ROOT_DIR || "./files");
 export const THUMBS_DIR = resolve(import.meta.env.THUMBS_DIR || "./.thumbs");
-// nested inside PHOTOS_DIR (not a sibling like THUMBS_DIR) so trashing an entry is an atomic
+// nested inside ROOT_DIR (not a sibling like THUMBS_DIR) so trashing an entry is an atomic
 // same-filesystem rename() rather than a copy+delete - and it's invisible in listings for
 // free, since listDir already skips dot-prefixed entries. See src/lib/auditLog.ts.
-export const TRASH_DIR = join(PHOTOS_DIR, ".trash");
+export const TRASH_DIR = join(ROOT_DIR, ".trash");
 
 export class InvalidPathError extends Error {}
 export class EntryExistsError extends Error {}

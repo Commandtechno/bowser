@@ -1,13 +1,13 @@
 import type { APIRoute } from "astro";
 import { logUpload } from "../../lib/auditLog";
 import { canWrite } from "../../lib/db";
-import { InvalidPathError, PHOTOS_DIR, writeUploadedFile } from "../../lib/media";
+import { InvalidPathError, ROOT_DIR, writeUploadedFile } from "../../lib/media";
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 // uploads a single file, streamed straight to disk - "path" is the full destination path
-// (parent dirs + file name) within PHOTOS_DIR, so drag-dropped folders can be reproduced by
+// (parent dirs + file name) within ROOT_DIR, so drag-dropped folders can be reproduced by
 // just giving each file its own nested path; missing parent dirs are created automatically
 export const PUT: APIRoute = async ({ request, url, locals }) => {
   if (!canWrite(locals.user!)) return json(403, { error: "read-only account" });
@@ -17,7 +17,7 @@ export const PUT: APIRoute = async ({ request, url, locals }) => {
   if (!request.body) return json(400, { error: "missing body" });
 
   try {
-    const { name, size } = await writeUploadedFile(PHOTOS_DIR, path, request.body);
+    const { name, size } = await writeUploadedFile(ROOT_DIR, path, request.body);
     const parentRel = path.split("/").filter(Boolean).slice(0, -1).join("/");
     await logUpload(locals.user!.id, parentRel ? `${parentRel}/${name}` : name, size);
     return json(201, { ok: true, name });

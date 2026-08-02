@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { InvalidPathError, listDir, PHOTOS_DIR } from "../../lib/media";
+import { InvalidPathError, listDir, ROOT_DIR } from "../../lib/media";
 import { getShareLink, isShareLinkExpired, resolveSharePath } from "../../lib/shareLinks";
 
 const json = (status: number, body: unknown): Response =>
@@ -15,7 +15,7 @@ export const GET: APIRoute = async ({ url }) => {
   const relPath = resolveSharePath(share.path, url.searchParams.get("path") ?? "");
 
   try {
-    const listing = await listDir(PHOTOS_DIR, relPath);
+    const listing = await listDir(ROOT_DIR, relPath);
     return json(200, listing);
   } catch (e) {
     if (e instanceof InvalidPathError) return json(400, { error: "invalid path" });

@@ -6,8 +6,8 @@ dist/
 .thumbs/
 # sqlite database (users, sessions)
 /data/
-# default local PHOTOS_DIR (see .env.example) - don't commit personal media
-/photos/
+# default local ROOT_DIR (see .env.example) - don't commit personal files
+/files/
 
 # dependencies
 node_modules/

@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { stat } from "node:fs/promises";
 import { canWrite, deleteShareServe, insertShareServe } from "../../lib/db";
-import { InvalidPathError, PHOTOS_DIR, resolveInDir } from "../../lib/media";
+import { InvalidPathError, ROOT_DIR, resolveInDir } from "../../lib/media";
 import {
   activeServeCount,
   buildCopyCommand,
@@ -55,7 +55,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
 
   let dirPath: string;
   try {
-    dirPath = resolveInDir(PHOTOS_DIR, path);
+    dirPath = resolveInDir(ROOT_DIR, path);
   } catch (e) {
     if (e instanceof InvalidPathError) return json(400, { error: "invalid path" });
     throw e;
