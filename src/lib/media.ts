@@ -1,7 +1,7 @@
 import mime from "mime";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
@@ -29,6 +29,39 @@ export const resolveInDir = (root: string, relPath: string): string => {
   if (full !== root && !full.startsWith(root + sep)) throw new InvalidPathError(`path escapes root: ${relPath}`);
 
   return full;
+};
+
+// a restricted user's effective root - everything they browse/act on is resolved against
+// this instead of ROOT_DIR directly. Unrestricted (homeDir null, always true for admins,
+// see src/pages/api/users.ts) just gets ROOT_DIR itself
+export const rootDirFor = (user?: { homeDir: string | null } | null): string =>
+  user?.homeDir ? resolveInDir(ROOT_DIR, user.homeDir) : ROOT_DIR;
+
+// an absolute path already known to be under ROOT_DIR (e.g. from resolveInDir(rootDirFor(user), ...))
+// expressed as a "/"-joined path relative to ROOT_DIR itself - the canonical form audit log
+// rows, trash, and the thumbnail/preview caches are all keyed by, regardless of which user's
+// scoped root it was originally resolved against
+export const absToRootRel = (absPath: string): string => relative(ROOT_DIR, absPath).split(sep).join("/");
+
+// translates a ROOT_DIR-relative path into one relative to a restricted user's home dir, or
+// null if it falls outside that home entirely (the caller should exclude it) - used to scope
+// audit log/trash/share listings down to what a restricted user is allowed to see
+export const homeRelative = (homeDir: string | null, rootRelPath: string): string | null => {
+  if (!homeDir) return rootRelPath;
+  const homeSegs = homeDir.split("/").filter(Boolean);
+  const pathSegs = rootRelPath.split("/").filter(Boolean);
+  if (homeSegs.length > pathSegs.length || homeSegs.some((seg, i) => pathSegs[i] !== seg)) return null;
+  return pathSegs.slice(homeSegs.length).join("/");
+};
+
+// validates a folder path an admin wants to restrict a user to: same rules as any other
+// relPath (no traversal, can't reach .trash) plus it must actually exist as a directory
+export const validateHomeDir = async (relPath: string): Promise<string> => {
+  const normalized = relPath.split("/").filter(Boolean).join("/");
+  const abs = resolveInDir(ROOT_DIR, normalized);
+  const st = await stat(abs).catch(() => null);
+  if (!st || !st.isDirectory()) throw new InvalidPathError(`"${normalized}" is not a folder`);
+  return normalized;
 };
 
 export const mimeTypeOf = (filename: string): string => mime.getType(filename) ?? "application/octet-stream";

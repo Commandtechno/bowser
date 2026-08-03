@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { stat } from "node:fs/promises";
 import { canWrite, deleteShareServe, insertShareServe } from "../../lib/db";
-import { InvalidPathError, ROOT_DIR, resolveInDir } from "../../lib/media";
+import { absToRootRel, homeRelative, InvalidPathError, resolveInDir, rootDirFor } from "../../lib/media";
 import {
   activeServeCount,
   buildCopyCommand,
@@ -25,11 +25,20 @@ import {
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-// every signed-in user can see who shared what - there's no per-user folder permission
-// model in this app, everyone already browses the same tree
-export const GET: APIRoute = async ({ url }) => {
+// every signed-in user can see who shared what, scoped down to their own home dir if
+// they're restricted to one (see users.homeDir) - admins are always unrestricted, so this
+// stays the full list for them
+export const GET: APIRoute = async ({ url, locals }) => {
   const includeExpired = url.searchParams.get("includeExpired") === "1";
-  return json(200, { shares: await listShareLinks(includeExpired) });
+  const shares = await listShareLinks(includeExpired);
+  const homeDir = locals.user!.homeDir;
+  const scoped = homeDir
+    ? shares.flatMap(s => {
+        const path = homeRelative(homeDir, s.path);
+        return path === null ? [] : [{ ...s, path }];
+      })
+    : shares;
+  return json(200, { shares: scoped });
 };
 
 export const POST: APIRoute = async ({ request, locals, url }) => {
@@ -54,8 +63,13 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   if (protocol !== undefined && !isValidProtocol(protocol)) return json(400, { error: "invalid protocol" });
 
   let dirPath: string;
+  let rootRelPath: string;
   try {
-    dirPath = resolveInDir(ROOT_DIR, path);
+    dirPath = resolveInDir(rootDirFor(user), path);
+    // shares are always stored relative to the true ROOT_DIR, not the creator's scoped root -
+    // the public /share page resolves them without any signed-in user (and thus no home dir)
+    // to translate against
+    rootRelPath = absToRootRel(dirPath);
   } catch (e) {
     if (e instanceof InvalidPathError) return json(400, { error: "invalid path" });
     throw e;
@@ -67,7 +81,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   if (protocol !== undefined && activeServeCount() >= MAX_RCLONE_SERVES)
     return json(429, { error: `too many active protocol shares (limit ${MAX_RCLONE_SERVES}) - revoke one first` });
 
-  const share = await createShareLink(path, user.id, durationSeconds);
+  const share = await createShareLink(rootRelPath, user.id, durationSeconds);
 
   if (protocol === undefined) return json(200, { share });
 
@@ -98,6 +112,9 @@ export const DELETE: APIRoute = async ({ url, locals }) => {
   const share = await getShareLink(token);
   if (!share) return json(404, { error: "no such share link" });
   if (share.createdBy !== user.id && user.role !== "admin") return json(403, { error: "not your share link" });
+  // covers a home dir reassigned after the share was created - a restricted user can no
+  // longer manage a share that's since fallen outside their scope
+  if (user.homeDir && homeRelative(user.homeDir, share.path) === null) return json(403, { error: "not your share link" });
 
   stopServeProcess(token);
   await deleteShareServe(token);

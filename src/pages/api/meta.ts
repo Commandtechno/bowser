@@ -1,18 +1,18 @@
 import type { APIRoute } from "astro";
 import { getMeta } from "../../lib/meta";
 import { classifyMedia } from "../../lib/mediaKind";
-import { InvalidPathError, ROOT_DIR, resolveInDir } from "../../lib/media";
+import { InvalidPathError, resolveInDir, rootDirFor } from "../../lib/media";
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-export const GET: APIRoute = async ({ url }) => {
+export const GET: APIRoute = async ({ url, locals }) => {
   const relPath = url.searchParams.get("path");
   if (!relPath) return json(400, { error: "path is required" });
 
   let filePath: string;
   try {
-    filePath = resolveInDir(ROOT_DIR, relPath);
+    filePath = resolveInDir(rootDirFor(locals.user), relPath);
   } catch (e) {
     if (e instanceof InvalidPathError) return json(400, { error: "invalid path" });
     throw e;

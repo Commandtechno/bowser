@@ -15,9 +15,11 @@ import {
   isValidRole,
   listUsers,
   ROLES,
+  setHomeDir,
   setPasswordHash,
   setRole
 } from "../../lib/db";
+import { InvalidPathError, validateHomeDir } from "../../lib/media";
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -41,10 +43,11 @@ export const POST: APIRoute = async ({ request, locals }) => {
   } catch {
     return json(400, { error: "invalid request" });
   }
-  const { username, password, role } = (body ?? {}) as {
+  const { username, password, role, homeDir } = (body ?? {}) as {
     username?: unknown;
     password?: unknown;
     role?: unknown;
+    homeDir?: unknown;
   };
 
   if (!validateUsername(username)) return json(400, { error: "username must be 2-32 chars: letters, digits, . _ -" });
@@ -53,7 +56,20 @@ export const POST: APIRoute = async ({ request, locals }) => {
   if (role !== undefined && !isValidRole(role)) return json(400, { error: `role must be one of ${ROLES.join(", ")}` });
   if (await getUserWithHash(username)) return json(409, { error: "username already taken" });
 
-  const user = await createUser(username, await hashPassword(password), isValidRole(role) ? role : DEFAULT_ROLE);
+  const targetRole = isValidRole(role) ? role : DEFAULT_ROLE;
+  let normalizedHomeDir: string | null = null;
+  if (homeDir !== undefined && homeDir !== null && homeDir !== "") {
+    if (typeof homeDir !== "string") return json(400, { error: "homeDir must be a string" });
+    if (targetRole === "admin") return json(400, { error: "admins cannot be restricted to a folder" });
+    try {
+      normalizedHomeDir = await validateHomeDir(homeDir);
+    } catch (e) {
+      if (e instanceof InvalidPathError) return json(400, { error: e.message });
+      throw e;
+    }
+  }
+
+  const user = await createUser(username, await hashPassword(password), targetRole, normalizedHomeDir);
   return json(200, { user });
 };
 
@@ -68,9 +84,16 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
   } catch {
     return json(400, { error: "invalid request" });
   }
-  const { id, password, role } = (body ?? {}) as { id?: unknown; password?: unknown; role?: unknown };
+  const { id, password, role, homeDir } = (body ?? {}) as {
+    id?: unknown;
+    password?: unknown;
+    role?: unknown;
+    homeDir?: unknown;
+  };
 
-  if (typeof id !== "number" || !(await getUserById(id))) return json(404, { error: "no such user" });
+  if (typeof id !== "number") return json(404, { error: "no such user" });
+  const existing = await getUserById(id);
+  if (!existing) return json(404, { error: "no such user" });
 
   if (password !== undefined) {
     if (!validatePassword(password))
@@ -83,6 +106,25 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
     if (!isValidRole(role)) return json(400, { error: `role must be one of ${ROLES.join(", ")}` });
     if (id === locals.user!.id) return json(400, { error: "cannot change your own role" });
     await setRole(id, role);
+    // becoming admin always lifts any restriction - admins are never restricted to a folder
+    if (role === "admin" && homeDir === undefined && existing.homeDir) await setHomeDir(id, null);
+  }
+
+  if (homeDir !== undefined) {
+    if (homeDir === null || homeDir === "") {
+      await setHomeDir(id, null);
+    } else if (typeof homeDir !== "string") {
+      return json(400, { error: "homeDir must be a string" });
+    } else {
+      const effectiveRole = isValidRole(role) ? role : existing.role;
+      if (effectiveRole === "admin") return json(400, { error: "admins cannot be restricted to a folder" });
+      try {
+        await setHomeDir(id, await validateHomeDir(homeDir));
+      } catch (e) {
+        if (e instanceof InvalidPathError) return json(400, { error: e.message });
+        throw e;
+      }
+    }
   }
 
   return json(200, { user: await getUserById(id) });

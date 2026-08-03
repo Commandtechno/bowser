@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { open, stat } from "node:fs/promises";
 import { codeToHtml } from "shiki";
-import { InvalidPathError, ROOT_DIR, resolveInDir } from "../../lib/media";
+import { InvalidPathError, resolveInDir, rootDirFor } from "../../lib/media";
 import { classifyMedia, codeLangOf } from "../../lib/mediaKind";
 import { isSyntaxTheme } from "../../lib/themes";
 
@@ -21,7 +21,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
 
   let sourcePath: string;
   try {
-    sourcePath = resolveInDir(ROOT_DIR, relPath);
+    sourcePath = resolveInDir(rootDirFor(locals.user), relPath);
   } catch (e) {
     if (e instanceof InvalidPathError) return new Response(null, { status: 400 });
     throw e;

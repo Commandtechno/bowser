@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { logMove, softDelete } from "../../lib/auditLog";
 import { canWrite } from "../../lib/db";
-import { EntryExistsError, InvalidPathError, moveEntry, ROOT_DIR } from "../../lib/media";
+import { absToRootRel, EntryExistsError, InvalidPathError, moveEntry, resolveInDir, rootDirFor } from "../../lib/media";
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -15,7 +15,9 @@ export const DELETE: APIRoute = async ({ url, locals }) => {
   if (!path) return json(400, { error: "path is required" });
 
   try {
-    await softDelete(locals.user!.id, path);
+    const root = rootDirFor(locals.user);
+    const rootRelPath = absToRootRel(resolveInDir(root, path));
+    await softDelete(locals.user!.id, rootRelPath);
   } catch (e) {
     if (e instanceof InvalidPathError) return json(400, { error: e.message });
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return json(404, { error: "not found" });
@@ -40,8 +42,15 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
   if (typeof path !== "string" || !path) return json(400, { error: "path is required" });
   if (typeof to !== "string" || !to) return json(400, { error: "to is required" });
 
+  let rootRelFrom: string;
+  let rootRelTo: string;
   try {
-    await moveEntry(ROOT_DIR, path, to);
+    const root = rootDirFor(locals.user);
+    // resolved (and validated as staying within the user's scope) before the move happens,
+    // since "path" no longer exists at its old spot to re-resolve afterwards
+    rootRelFrom = absToRootRel(resolveInDir(root, path));
+    rootRelTo = absToRootRel(resolveInDir(root, to));
+    await moveEntry(root, path, to);
   } catch (e) {
     if (e instanceof InvalidPathError) return json(400, { error: e.message });
     if (e instanceof EntryExistsError) return json(409, { error: e.message });
@@ -49,6 +58,6 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
     throw e;
   }
 
-  await logMove(locals.user!.id, path, to);
+  await logMove(locals.user!.id, rootRelFrom, rootRelTo);
   return json(200, { ok: true });
 };

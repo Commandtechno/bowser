@@ -19,6 +19,10 @@ export const users = sqliteTable("users", {
   username: text("username").notNull(),
   passwordHash: text("password_hash").notNull(),
   role: text("role").$type<TRole>().notNull().default(DEFAULT_ROLE),
+  // "/"-joined path relative to ROOT_DIR that this user is confined to (browsing, uploads,
+  // share creation, everything) - null means unrestricted. Only meaningful for non-admin
+  // roles; admins are always unrestricted, see src/pages/api/users.ts
+  homeDir: text("home_dir"),
   accentColor: text("accent_color").notNull().default(DEFAULT_ACCENT),
   syntaxTheme: text("syntax_theme").notNull().default(DEFAULT_SYNTAX_THEME),
   previewMode: text("preview_mode").notNull().default(DEFAULT_PREVIEW_MODE),

@@ -117,6 +117,11 @@ const bootstrap = async (): Promise<void> => {
     await client.execute(`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT '${DEFAULT_ROLE}'`);
     if (hasIsAdmin) await client.execute(`UPDATE users SET role = 'admin' WHERE is_admin = 1`);
   }
+
+  const hasHomeDir = cols.rows.some(row => row.name === "home_dir");
+  if (!hasHomeDir) {
+    await client.execute(`ALTER TABLE users ADD COLUMN home_dir TEXT`);
+  }
 };
 
 const ready = (globalForDb.__appDbReady ??= bootstrap());
@@ -125,6 +130,7 @@ export type TUser = {
   id: number;
   username: string;
   role: TRole;
+  homeDir: string | null;
   accentColor: string;
   syntaxTheme: string;
   previewMode: string;
@@ -137,6 +143,7 @@ const userSelection = {
   username: users.username,
   passwordHash: users.passwordHash,
   role: users.role,
+  homeDir: users.homeDir,
   accentColor: users.accentColor,
   syntaxTheme: users.syntaxTheme,
   previewMode: users.previewMode,
@@ -148,6 +155,7 @@ const toUser = (row: {
   id: number;
   username: string;
   role: TRole;
+  homeDir: string | null;
   accentColor: string;
   syntaxTheme: string;
   previewMode: string;
@@ -157,6 +165,7 @@ const toUser = (row: {
   id: row.id,
   username: row.username,
   role: row.role,
+  homeDir: row.homeDir,
   accentColor: row.accentColor,
   syntaxTheme: row.syntaxTheme,
   previewMode: row.previewMode,
@@ -194,9 +203,14 @@ export const listUsers = async (): Promise<TUser[]> => {
   return rows.map(toUser);
 };
 
-export const createUser = async (username: string, passwordHash: string, role: TRole): Promise<TUser> => {
+export const createUser = async (
+  username: string,
+  passwordHash: string,
+  role: TRole,
+  homeDir: string | null = null
+): Promise<TUser> => {
   await ready;
-  const [{ id }] = await db.insert(users).values({ username, passwordHash, role }).returning({ id: users.id });
+  const [{ id }] = await db.insert(users).values({ username, passwordHash, role, homeDir }).returning({ id: users.id });
   return (await getUserById(id))!;
 };
 
@@ -213,6 +227,11 @@ export const setPasswordHash = async (id: number, passwordHash: string): Promise
 export const setRole = async (id: number, role: TRole): Promise<void> => {
   await ready;
   await db.update(users).set({ role }).where(eq(users.id, id));
+};
+
+export const setHomeDir = async (id: number, homeDir: string | null): Promise<void> => {
+  await ready;
+  await db.update(users).set({ homeDir }).where(eq(users.id, id));
 };
 
 export const setAccentColor = async (id: number, accentColor: string): Promise<void> => {

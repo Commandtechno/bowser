@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import sharp from "sharp";
-import { InvalidPathError, ROOT_DIR, THUMBS_DIR, resolveInDir } from "../../lib/media";
+import { absToRootRel, InvalidPathError, resolveInDir, rootDirFor, THUMBS_DIR } from "../../lib/media";
 import { classifyMedia } from "../../lib/mediaKind";
 import { extractRawPreview } from "../../lib/preview";
 
@@ -10,7 +10,7 @@ import { extractRawPreview } from "../../lib/preview";
 // (much higher res than the thumbnail, but still just a preview - not the full raw resolution)
 const PREVIEW_MAX_DIMENSION = 2048;
 
-export const GET: APIRoute = async ({ url }) => {
+export const GET: APIRoute = async ({ url, locals }) => {
   const relPath = url.searchParams.get("path");
   if (!relPath) return new Response(null, { status: 400 });
 
@@ -19,8 +19,8 @@ export const GET: APIRoute = async ({ url }) => {
   let sourcePath: string;
   let previewPath: string;
   try {
-    sourcePath = resolveInDir(ROOT_DIR, relPath);
-    previewPath = resolveInDir(THUMBS_DIR, relPath) + ".preview.jpg";
+    sourcePath = resolveInDir(rootDirFor(locals.user), relPath);
+    previewPath = resolveInDir(THUMBS_DIR, absToRootRel(sourcePath)) + ".preview.jpg";
   } catch (e) {
     if (e instanceof InvalidPathError) return new Response(null, { status: 400 });
     throw e;

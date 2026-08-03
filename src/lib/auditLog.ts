@@ -16,7 +16,7 @@ import {
   markAuditLogUndone,
   type TAuditLogRow
 } from "./db";
-import { InvalidPathError, moveEntry, ROOT_DIR, resolveInDir, TRASH_DIR, uniqueName } from "./media";
+import { homeRelative, InvalidPathError, moveEntry, ROOT_DIR, resolveInDir, TRASH_DIR, uniqueName } from "./media";
 
 export type { TAuditLogRow };
 
@@ -41,6 +41,32 @@ export const listAuditLogRows = (opts: { beforeId?: number; limit: number }): Pr
   listAuditLogRowsFromDb(opts);
 
 export const listActiveTrash = (): Promise<TAuditLogRow[]> => listActiveTrashRows();
+
+// restricted users (see users.homeDir) only see rows that touch their own home dir - every
+// path-shaped field (the top-level `path`, plus move/restore's detail fields) is translated
+// to be relative to their home, and rows that don't intersect it at all are dropped. Admins
+// are always unrestricted (homeDir null), so this is a no-op for them
+export const scopeAuditRows = (rows: TAuditLogRow[], homeDir: string | null): TAuditLogRow[] => {
+  if (!homeDir) return rows;
+
+  const scoped: TAuditLogRow[] = [];
+  for (const row of rows) {
+    const path = homeRelative(homeDir, row.path);
+    if (path === null) continue;
+
+    let detail = row.detail;
+    if (detail) {
+      const parsed = JSON.parse(detail) as Record<string, unknown>;
+      for (const key of ["from", "to", "restoredPath"]) {
+        if (typeof parsed[key] === "string") parsed[key] = homeRelative(homeDir, parsed[key] as string) ?? parsed[key];
+      }
+      detail = JSON.stringify(parsed);
+    }
+
+    scoped.push({ ...row, path, detail });
+  }
+  return scoped;
+};
 
 // ---- plain logging, called by API routes right after the corresponding media.ts op succeeds ----
 

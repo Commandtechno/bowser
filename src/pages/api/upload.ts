@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { logUpload } from "../../lib/auditLog";
 import { canWrite } from "../../lib/db";
-import { InvalidPathError, ROOT_DIR, writeUploadedFile } from "../../lib/media";
+import { absToRootRel, InvalidPathError, resolveInDir, rootDirFor, writeUploadedFile } from "../../lib/media";
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -17,9 +17,11 @@ export const PUT: APIRoute = async ({ request, url, locals }) => {
   if (!request.body) return json(400, { error: "missing body" });
 
   try {
-    const { name, size } = await writeUploadedFile(ROOT_DIR, path, request.body);
+    const root = rootDirFor(locals.user);
+    const { name, size } = await writeUploadedFile(root, path, request.body);
     const parentRel = path.split("/").filter(Boolean).slice(0, -1).join("/");
-    await logUpload(locals.user!.id, parentRel ? `${parentRel}/${name}` : name, size);
+    const rootRelParent = absToRootRel(resolveInDir(root, parentRel));
+    await logUpload(locals.user!.id, rootRelParent ? `${rootRelParent}/${name}` : name, size);
     return json(201, { ok: true, name });
   } catch (e) {
     if (e instanceof InvalidPathError) return json(400, { error: e.message });

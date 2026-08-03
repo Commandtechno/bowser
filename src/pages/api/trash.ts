@@ -1,5 +1,12 @@
 import type { APIRoute } from "astro";
-import { listActiveTrash, NotRevertibleError, purgeAllTrash, purgeTrashEntry, restoreFromTrash } from "../../lib/auditLog";
+import {
+  listActiveTrash,
+  NotRevertibleError,
+  purgeAllTrash,
+  purgeTrashEntry,
+  restoreFromTrash,
+  scopeAuditRows
+} from "../../lib/auditLog";
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -7,9 +14,11 @@ const json = (status: number, body: unknown): Response =>
 const requireAdmin = (locals: App.Locals): Response | null =>
   locals.user?.role === "admin" ? null : json(403, { error: "admin only" });
 
-// every signed-in user can see what's in the trash - only admins can restore or purge it
-export const GET: APIRoute = async () => {
-  return json(200, { items: await listActiveTrash() });
+// every signed-in user can see what's in the trash (scoped to their home dir if restricted,
+// see users.homeDir) - only admins can restore or purge it
+export const GET: APIRoute = async ({ locals }) => {
+  const items = scopeAuditRows(await listActiveTrash(), locals.user!.homeDir);
+  return json(200, { items });
 };
 
 // restores one trashed entry

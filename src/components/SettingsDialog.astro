@@ -70,6 +70,12 @@ const isAdmin = user.role === "admin";
       <section class="tab-panel" data-tab="account" hidden>
         <h3><span class="rule">──</span> account</h3>
 
+        {
+          user.homeDir && (
+            <p class="hint">your account is restricted to <code>/{user.homeDir}</code> and everything inside it.</p>
+          )
+        }
+
         <div class="row">
           <label>profile picture</label>
           <div class="avatar-controls">
@@ -138,6 +144,7 @@ const isAdmin = user.role === "admin";
                   </option>
                   <option value="admin">admin</option>
                 </select>
+                <input type="text" id="nu-homedir" placeholder="restrict to folder (optional)" autocomplete="off" />
                 <button class="btn" type="submit">create</button>
               </div>
               <span class="msg" id="users-msg" />
@@ -427,6 +434,7 @@ const isAdmin = user.role === "admin";
     id: number;
     username: string;
     role: TRole;
+    homeDir: string | null;
     hasAvatar: boolean;
     createdAt: number;
   };
@@ -442,7 +450,18 @@ const isAdmin = user.role === "admin";
     const $nuUsername = document.getElementById("nu-username") as HTMLInputElement;
     const $nuPassword = document.getElementById("nu-password") as HTMLInputElement;
     const $nuRole = document.getElementById("nu-role") as HTMLSelectElement;
+    const $nuHomeDir = document.getElementById("nu-homedir") as HTMLInputElement;
     const $usersMsg = document.getElementById("users-msg")!;
+
+    // admins can't be restricted to a folder - keep the field out of the way while that
+    // role is selected rather than letting it silently get ignored on submit
+    const syncHomeDirField = () => {
+      const isAdminRole = $nuRole.value === "admin";
+      $nuHomeDir.disabled = isAdminRole;
+      if (isAdminRole) $nuHomeDir.value = "";
+    };
+    $nuRole.addEventListener("change", syncHomeDirField);
+    syncHomeDirField();
 
     // every state must go through lit-html's render: writing textContent directly would
     // destroy lit's part markers and break all subsequent renders into this container
@@ -484,6 +503,22 @@ const isAdmin = user.role === "admin";
       );
     };
 
+    const setHomeDir = (u: TUserEntry) => {
+      const input = prompt(
+        `restrict ${u.username} to a folder (path relative to the file root, e.g. "Photos/Family").\nleave blank to remove any restriction:`,
+        u.homeDir ?? ""
+      );
+      if (input === null) return; // cancelled
+      act(
+        fetch("/api/users", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: u.id, homeDir: input.trim() || null })
+        }),
+        input.trim() ? `${u.username} restricted to "/${input.trim()}"` : `${u.username} is no longer restricted`
+      );
+    };
+
     const deleteUser = async (u: TUserEntry) => {
       const confirmed = await confirmAction({
         message: `delete ${u.username}? this cannot be undone.`,
@@ -506,7 +541,12 @@ const isAdmin = user.role === "admin";
                   ? html`<img src=${`/api/avatar?id=${u.id}&t=${Date.now()}`} alt="" />`
                   : html`<span>${u.username.slice(0, 2).toUpperCase()}</span>`}
               </div>
-              <span class="row-name" title=${u.username}>${u.username}${isSelf ? " (you)" : ""}</span>
+              <div class="entry-info">
+                <span class="row-name" title=${u.username}>${u.username}${isSelf ? " (you)" : ""}</span>
+                ${u.homeDir
+                  ? html`<span class="row-role" title=${`/${u.homeDir}`}>restricted to /${u.homeDir}</span>`
+                  : ""}
+              </div>
               <select
                 class="role-select"
                 title="change role"
@@ -516,6 +556,9 @@ const isAdmin = user.role === "admin";
                 ${ROLES.map(role => html`<option value=${role} ?selected=${role === u.role}>${role}</option>`)}
               </select>
               <div class="row-actions">
+                ${u.role !== "admin"
+                  ? html`<button class="mini" title="restrict to folder" @click=${() => setHomeDir(u)}>folder</button>`
+                  : ""}
                 <button class="mini" title="reset password" @click=${() => resetPassword(u)}>reset pw</button>
                 <button class="mini danger" title="delete user" ?disabled=${isSelf} @click=${() => deleteUser(u)}>
                   delete
@@ -549,7 +592,8 @@ const isAdmin = user.role === "admin";
           body: JSON.stringify({
             username: $nuUsername.value,
             password: $nuPassword.value,
-            role: $nuRole.value
+            role: $nuRole.value,
+            homeDir: $nuHomeDir.value.trim() || undefined
           })
         }),
         `created ${$nuUsername.value}`
