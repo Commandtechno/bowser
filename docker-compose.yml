@@ -3,6 +3,11 @@ services:
     build: .
     ports:
       - "${APP_PORT:-7504}:7504"
+    env_file:
+      # picks up any other vars from .env (e.g. a custom RCLONE_BIN) as container env -
+      # the environment: block below still wins for the container-internal paths
+      - path: .env
+        required: false
     environment:
       ROOT_DIR: /files
       THUMBS_DIR: /thumbs
@@ -10,12 +15,14 @@ services:
       RCLONE_BIN: rclone
       MAX_RCLONE_SERVES: ${MAX_RCLONE_SERVES:-20}
     volumes:
-      # the directory of files to serve - point ROOT_HOST_DIR at whatever you want,
+      # the directory of files to serve - falls back to the same ROOT_DIR used for a native
+      # (non-docker) run, so one .env works for both; override with ROOT_HOST_DIR if you want
+      # docker to serve a different directory than a native run would,
       # e.g. `ROOT_HOST_DIR=/mnt/nas/files docker compose up`
-      - ${ROOT_HOST_DIR:-./files}:/files
+      - ${ROOT_HOST_DIR:-${ROOT_DIR:-./files}}:/files
       # thumbnail cache and sqlite db (users/sessions/settings) - kept outside the container so
-      # they survive rebuilds; fine to leave at the repo-relative defaults
-      - ${THUMBS_HOST_DIR:-./.thumbs}:/thumbs
+      # they survive rebuilds; falls back to THUMBS_DIR from .env, then the repo-relative default
+      - ${THUMBS_HOST_DIR:-${THUMBS_DIR:-./.thumbs}}:/thumbs
       - ${DATA_HOST_DIR:-./data}:/data
     restart: unless-stopped
     # protocol-based share links (webdav/sftp/ftp/http, see src/lib/rcloneServe.ts) are each
