@@ -1,4 +1,5 @@
 import { runCapture } from "./exec";
+import { exiftoolCapture } from "./exiftool";
 
 // camera raw formats embed a JPEG preview for the LCD/viewfinder - pulling that is far
 // cheaper than decoding the actual raw sensor data, and covers virtually every raw format
@@ -6,7 +7,7 @@ const RAW_PREVIEW_TAGS = ["-PreviewImage", "-JpgFromRaw", "-ThumbnailImage"];
 
 export const extractRawPreview = async (path: string): Promise<Buffer> => {
   for (const tag of RAW_PREVIEW_TAGS) {
-    const buf = await runCapture("exiftool", ["-b", tag, path]);
+    const buf = await exiftoolCapture(["-b", tag, path]);
     if (buf.length > 0) return buf;
   }
 

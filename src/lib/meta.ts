@@ -1,4 +1,5 @@
 import { runCapture } from "./exec";
+import { exiftoolCapture } from "./exiftool";
 import type { MediaKind } from "./mediaKind";
 
 export type TMetaField = { label: string; value: string };
@@ -7,7 +8,7 @@ export type TMetaField = { label: string; value: string };
 // exiftool/ffprobe report, not the full dump
 
 const runExiftoolFields = async (path: string, tags: string[], labels: Record<string, string>): Promise<TMetaField[]> => {
-  const buf = await runCapture("exiftool", ["-json", ...tags.map(t => `-${t}`), path]);
+  const buf = await exiftoolCapture(["-json", ...tags.map(t => `-${t}`), path]);
   const [data] = JSON.parse(buf.toString("utf8")) as Record<string, unknown>[];
 
   const fields: TMetaField[] = [];

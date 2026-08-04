@@ -158,7 +158,7 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
               openContextMenu(e.clientX, e.clientY, fileContextMenuItems(currentPath, file));
             }}
           >
-            <img src="${thumbUrl}" class="thumb" alt="file icon" width="120" height="120" />
+            <img src="${thumbUrl}" class="thumb" alt="file icon" width="120" height="120" loading="lazy" />
             <div class="name">${file.name}</div>
             <div class="meta">${humanSize(file.size)}</div>
             <div class="meta">${humanDate(file.mtime)}</div>
@@ -199,7 +199,7 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
             openContextMenu(e.clientX, e.clientY, fileContextMenuItems(currentPath, file));
           }}
         >
-          <img src="${thumbUrl}" data-src="${viewUrl}" class="thumb" alt="thumbnail" width="120" height="120" />
+          <img src="${thumbUrl}" data-src="${viewUrl}" class="thumb" alt="thumbnail" width="120" height="120" loading="lazy" />
           <div class="name">${file.name}</div>
           <div class="meta">${humanSize(file.size)}</div>
           <div class="meta">${humanDate(file.mtime)}</div>

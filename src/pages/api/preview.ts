@@ -1,10 +1,10 @@
 import type { APIRoute } from "astro";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { stat } from "node:fs/promises";
 import sharp from "sharp";
-import { absToRootRel, InvalidPathError, resolveInDir, rootDirFor, THUMBS_DIR } from "../../lib/media";
+import { InvalidPathError, resolveInDir, rootDirFor } from "../../lib/media";
 import { classifyMedia } from "../../lib/mediaKind";
 import { extractRawPreview } from "../../lib/preview";
+import { getCachedDerivative, previewCachePath } from "../../lib/thumbGen";
 
 // browsers can't decode raw sensor data, so this serves the camera's embedded JPEG preview
 // (much higher res than the thumbnail, but still just a preview - not the full raw resolution)
@@ -20,7 +20,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
   let previewPath: string;
   try {
     sourcePath = resolveInDir(rootDirFor(locals.user), relPath);
-    previewPath = resolveInDir(THUMBS_DIR, absToRootRel(sourcePath)) + ".preview.jpg";
+    previewPath = previewCachePath(sourcePath);
   } catch (e) {
     if (e instanceof InvalidPathError) return new Response(null, { status: 400 });
     throw e;
@@ -33,28 +33,19 @@ export const GET: APIRoute = async ({ url, locals }) => {
     return new Response(null, { status: 404 });
   }
 
-  const cachedStat = await stat(previewPath).catch(() => null);
-
-  if (cachedStat && cachedStat.mtimeMs >= sourceStat.mtimeMs) {
-    return new Response(await readFile(previewPath), {
-      headers: { "content-type": "image/jpeg", "cache-control": "private, max-age=3600" }
-    });
-  }
-
-  let buffer: Buffer;
-  try {
-    const extracted = await extractRawPreview(sourcePath);
-    buffer = await sharp(extracted)
-      .resize(PREVIEW_MAX_DIMENSION, PREVIEW_MAX_DIMENSION, { fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 90 })
-      .toBuffer();
-  } catch (e) {
-    console.warn(`preview generation failed for ${relPath}:`, e);
-    return new Response(null, { status: 404 });
-  }
-
-  await mkdir(dirname(previewPath), { recursive: true });
-  await writeFile(previewPath, buffer);
+  const buffer = await getCachedDerivative({
+    sourcePath,
+    cachePath: previewPath,
+    sourceMtimeMs: sourceStat.mtimeMs,
+    generate: async () => {
+      const extracted = await extractRawPreview(sourcePath);
+      return sharp(extracted)
+        .resize(PREVIEW_MAX_DIMENSION, PREVIEW_MAX_DIMENSION, { fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+    }
+  });
+  if (!buffer) return new Response(null, { status: 404 });
 
   return new Response(new Uint8Array(buffer), {
     headers: { "content-type": "image/jpeg", "cache-control": "private, max-age=3600" }

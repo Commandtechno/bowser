@@ -1,12 +1,8 @@
 import type { APIRoute } from "astro";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-import sharp from "sharp";
-import { absToRootRel, InvalidPathError, resolveInDir, rootDirFor, THUMBS_DIR } from "../../lib/media";
+import { stat } from "node:fs/promises";
+import { InvalidPathError, resolveInDir, rootDirFor } from "../../lib/media";
 import { classifyMedia, iconFor } from "../../lib/mediaKind";
-import { extractAudioCover, extractPdfPage, extractRawPreview, extractVideoFrame } from "../../lib/preview";
-
-const THUMB_SIZE = 300;
+import { buildThumb, getCachedDerivative, thumbCachePath } from "../../lib/thumbGen";
 
 // Response.redirect() marks its headers immutable, which throws once the auth middleware
 // appends its session cookie - build an ordinary mutable response instead
@@ -24,7 +20,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
   let thumbPath: string;
   try {
     sourcePath = resolveInDir(rootDirFor(locals.user), relPath);
-    thumbPath = resolveInDir(THUMBS_DIR, absToRootRel(sourcePath)) + ".webp";
+    thumbPath = thumbCachePath(sourcePath);
   } catch (e) {
     if (e instanceof InvalidPathError) return new Response(null, { status: 400 });
     throw e;
@@ -37,36 +33,15 @@ export const GET: APIRoute = async ({ url, locals }) => {
     return new Response(null, { status: 404 });
   }
 
-  const cachedStat = await stat(thumbPath).catch(() => null);
-
-  if (cachedStat && cachedStat.mtimeMs >= sourceStat.mtimeMs) {
-    return new Response(await readFile(thumbPath), {
-      headers: { "content-type": "image/webp", "cache-control": "private, max-age=3600" }
-    });
-  }
-
   // extraction and encoding are both fallible in the same way (corrupt/unsupported source
   // media) - either one falls back to the file-type icon rather than surfacing an error
-  let buffer: Buffer;
-  try {
-    let source: string | Buffer = sourcePath;
-    if (kind === "raw") source = await extractRawPreview(sourcePath);
-    else if (kind === "video") source = await extractVideoFrame(sourcePath);
-    // uses embedded cover art; files without any fall through to the icon below
-    else if (kind === "audio") source = await extractAudioCover(sourcePath);
-    else if (kind === "pdf") source = await extractPdfPage(sourcePath);
-
-    buffer = await sharp(source)
-      .resize(THUMB_SIZE, THUMB_SIZE, { fit: "inside", withoutEnlargement: true })
-      .webp()
-      .toBuffer();
-  } catch (e) {
-    console.warn(`thumbnail generation failed for ${relPath}:`, e);
-    return iconRedirect(relPath, url);
-  }
-
-  await mkdir(dirname(thumbPath), { recursive: true });
-  await writeFile(thumbPath, buffer);
+  const buffer = await getCachedDerivative({
+    sourcePath,
+    cachePath: thumbPath,
+    sourceMtimeMs: sourceStat.mtimeMs,
+    generate: () => buildThumb(sourcePath, kind)
+  });
+  if (!buffer) return iconRedirect(relPath, url);
 
   return new Response(new Uint8Array(buffer), {
     headers: { "content-type": "image/webp", "cache-control": "private, max-age=3600" }
