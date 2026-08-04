@@ -5,8 +5,10 @@ import { join, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-export const ROOT_DIR = resolve(import.meta.env.ROOT_DIR || "./files");
-export const THUMBS_DIR = resolve(import.meta.env.THUMBS_DIR || "./.thumbs");
+// process.env (not import.meta.env): these must be resolved at runtime so the docker
+// compose `environment:` block takes effect - import.meta.env is inlined at build time
+export const ROOT_DIR = resolve(process.env.ROOT_DIR || "./files");
+export const THUMBS_DIR = resolve(process.env.THUMBS_DIR || "./.thumbs");
 // nested inside ROOT_DIR (not a sibling like THUMBS_DIR) so trashing an entry is an atomic
 // same-filesystem rename() rather than a copy+delete - and it's invisible in listings for
 // free, since listDir already skips dot-prefixed entries. See src/lib/auditLog.ts.

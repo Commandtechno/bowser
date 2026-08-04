@@ -26,7 +26,8 @@ export type { TAuditAction, TRole };
 // readonly accounts can browse/view/download but can't touch the filesystem or share links
 export const canWrite = (user: { role: TRole }): boolean => user.role !== "readonly";
 
-const DB_PATH = resolve(import.meta.env.DB_PATH || "./data/app.db");
+// process.env so the docker compose `environment:` block takes effect at runtime
+const DB_PATH = resolve(process.env.DB_PATH || "./data/app.db");
 mkdirSync(dirname(DB_PATH), { recursive: true });
 
 const client = createClient({ url: `file:${DB_PATH}` });

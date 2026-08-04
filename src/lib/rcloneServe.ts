@@ -21,8 +21,9 @@ export const isValidProtocol = (value: unknown): value is TProtocol => (PROTOCOL
 
 export const SERVE_USER = "share";
 
-const RCLONE_BIN = import.meta.env.RCLONE_BIN || "rclone";
-export const MAX_RCLONE_SERVES = Number(import.meta.env.MAX_RCLONE_SERVES) || 20;
+// process.env so the docker compose `environment:` block takes effect at runtime
+const RCLONE_BIN = process.env.RCLONE_BIN || "rclone";
+export const MAX_RCLONE_SERVES = Number(process.env.MAX_RCLONE_SERVES) || 20;
 
 type TServeEntry = { protocol: TProtocol; port: number; proc: ChildProcess };
 
