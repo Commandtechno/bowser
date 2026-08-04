@@ -2,7 +2,7 @@ services:
   bowser:
     build: .
     ports:
-      - "${APP_PORT:-7504}:7504"
+      - "${APP_PORT:-8888}:8888"
     env_file:
       # picks up any other vars from .env (e.g. a custom RCLONE_BIN) as container env -
       # the environment: block below still wins for the container-internal paths

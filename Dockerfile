@@ -45,11 +45,11 @@ COPY package.json ./
 # ROOT_DIR/THUMBS_DIR/DB_PATH are meant to be bind-mounted volumes (see docker-compose.yml)
 # rather than baked into the image - defaults here just match .env.example
 ENV HOST=0.0.0.0
-ENV PORT=7504
+ENV PORT=8888
 ENV ROOT_DIR=/files
 ENV THUMBS_DIR=/thumbs
 ENV DB_PATH=/data/app.db
 
-EXPOSE 7504
+EXPOSE 8888
 
 CMD ["node", "./dist/server/entry.mjs"]
