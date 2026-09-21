@@ -1,10 +1,8 @@
 import type { APIRoute } from "astro";
 import { logMove, softDelete } from "../../lib/auditLog";
+import { json } from "../../lib/http";
 import { canWrite } from "../../lib/roles";
 import { absToRootRel, EntryExistsError, InvalidPathError, moveEntry, resolveInDir, rootDirFor } from "../../lib/media";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 // soft-deletes a file or folder (recursively) - moved into trash, not actually removed;
 // see src/lib/auditLog.ts

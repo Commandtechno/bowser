@@ -7,10 +7,8 @@ import {
   validatePassword,
   validateUsername
 } from "../../../lib/auth";
+import { json } from "../../../lib/http";
 import { countUsers, createUser } from "../../../lib/users";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 // creates the first (admin) account; only available while the users table is empty
 export const POST: APIRoute = async ({ request, cookies }) => {

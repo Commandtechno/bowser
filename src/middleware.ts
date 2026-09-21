@@ -1,6 +1,10 @@
 import type { MiddlewareHandler } from "astro";
 import { SESSION_COOKIE, setSessionCookie, validateSessionToken } from "./lib/auth";
+import { json } from "./lib/http";
 import { countUsers } from "./lib/users";
+
+// users can't delete themselves (see api/users.ts), so once one exists there always is one
+let hasUsers = false;
 
 const PUBLIC_PAGES = new Set(["/login", "/setup"]);
 
@@ -36,7 +40,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
     }
 
     // fresh instance: force the first-admin setup flow until a user exists
-    if ((await countUsers()) === 0) {
+    if (!hasUsers && !(hasUsers = (await countUsers()) > 0)) {
       if (path === "/setup" || path.startsWith("/api/auth/")) return await next();
       return redirect("/setup");
     }
@@ -46,7 +50,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
     if (!locals.user) {
       if (PUBLIC_PAGES.has(path) && path !== "/setup") return await next();
       if (path.startsWith("/api/auth/")) return await next();
-      if (path.startsWith("/api/")) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+      if (path.startsWith("/api/")) return json(401, { error: "unauthorized" });
       return redirect("/login");
     }
 

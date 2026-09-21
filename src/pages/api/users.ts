@@ -6,15 +6,10 @@ import {
   validatePassword,
   validateUsername
 } from "../../lib/auth";
+import { json, requireAdmin } from "../../lib/http";
 import { InvalidPathError, validateHomeDir } from "../../lib/media";
 import { DEFAULT_ROLE, isValidRole, ROLES } from "../../lib/roles";
 import { createUser, deleteUser, getUserById, getUserWithHash, listUsers, updateUser } from "../../lib/users";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
-const requireAdmin = (locals: App.Locals): Response | null =>
-  locals.user?.role === "admin" ? null : json(403, { error: "admin only" });
 
 export const GET: APIRoute = async ({ locals }) => {
   const denied = requireAdmin(locals);

@@ -196,10 +196,15 @@ const isAdmin = user.role === "admin";
 
 <script>
   import { html, render } from "lit-html";
+  import type { TAuditLogRow as TAuditEntry } from "../lib/auditLog";
   import { currentUserId, isAdmin } from "../lib/clientSession";
   import { confirmAction } from "../lib/confirmDialog";
   import { notifyFsChanged } from "../lib/folderActions";
+  import { ROLES, type TRole } from "../lib/roles";
+  import type { TShareLink as TShareEntry } from "../lib/shareLinks";
+  import { nowS } from "../lib/time";
   import { showToast } from "../lib/toast";
+  import type { TUser as TUserEntry } from "../lib/users";
 
   const $dialog = document.getElementById("settings-dialog") as HTMLDialogElement;
 
@@ -337,19 +342,9 @@ const isAdmin = user.role === "admin";
 
   // ---- share links ----
 
-  type TShareEntry = {
-    token: string;
-    path: string;
-    createdBy: number;
-    createdByUsername: string;
-    createdAt: number;
-    expiresAt: number;
-  };
-
   const $sharesList = document.getElementById("shares-list")!;
   const $showExpired = document.getElementById("shares-show-expired") as HTMLInputElement;
 
-  const nowS = () => Math.floor(Date.now() / 1000);
   const isExpired = (s: TShareEntry) => s.expiresAt <= nowS();
   const shareUrl = (token: string) => `${location.origin}/share?token=${token}`;
 
@@ -430,19 +425,6 @@ const isAdmin = user.role === "admin";
   // ---- user management (only rendered for admins) ----
 
   const $usersList = document.getElementById("users-list");
-
-  type TRole = "readonly" | "member" | "admin";
-
-  type TUserEntry = {
-    id: number;
-    username: string;
-    role: TRole;
-    homeDir: string | null;
-    hasAvatar: boolean;
-    createdAt: number;
-  };
-
-  const ROLES: TRole[] = ["readonly", "member", "admin"];
 
   // reassigned below when $usersList exists (admins only) - a harmless no-op otherwise, so
   // the settingsOpen handler at the bottom of this script can call it unconditionally
@@ -605,24 +587,6 @@ const isAdmin = user.role === "admin";
   }
 
   // ---- history (audit log) ----
-
-  type TAuditAction = "create_folder" | "upload" | "move" | "delete" | "restore" | "purge";
-
-  type TAuditEntry = {
-    id: number;
-    userId: number;
-    username: string;
-    action: TAuditAction;
-    path: string;
-    detail: string | null;
-    undoneAt: number | null;
-    undoneBy: number | null;
-    undoneByUsername: string | null;
-    purgedAt: number | null;
-    purgedBy: number | null;
-    purgedByUsername: string | null;
-    createdAt: number;
-  };
 
   const $historyList = document.getElementById("history-list")!;
   const $historyMoreWrap = document.getElementById("history-more-wrap")!;

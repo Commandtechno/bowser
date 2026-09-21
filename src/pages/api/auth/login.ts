@@ -1,14 +1,12 @@
 import type { APIRoute } from "astro";
 import { burnVerify, createSession, setSessionCookie, validateUsername, verifyPassword } from "../../../lib/auth";
+import { json } from "../../../lib/http";
 import { getUserWithHash } from "../../../lib/users";
 
 // naive in-memory brute-force throttle: 5 bad tries per username locks it for 60s
 const FAIL_LIMIT = 5;
 const LOCKOUT_MS = 60_000;
 const failures = new Map<string, { count: number; lockedUntil: number }>();
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   let body: unknown;

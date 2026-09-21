@@ -1,9 +1,7 @@
 import type { APIRoute } from "astro";
+import { json } from "../../lib/http";
 import { InvalidPathError, listDir, ROOT_DIR } from "../../lib/media";
 import { getShareLink, isShareLinkExpired, resolveSharePath } from "../../lib/shareLinks";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export const GET: APIRoute = async ({ url }) => {
   const token = url.searchParams.get("token");

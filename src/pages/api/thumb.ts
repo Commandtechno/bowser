@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { stat } from "node:fs/promises";
+import { json, requireAdmin } from "../../lib/http";
 import { InvalidPathError, resolveInDir, rootDirFor } from "../../lib/media";
 import { classifyMedia, iconFor } from "../../lib/mediaKind";
 import { buildThumb, clearThumbCache, getCachedDerivative, thumbCachePath } from "../../lib/thumbGen";
@@ -50,12 +51,8 @@ export const GET: APIRoute = async ({ url, locals }) => {
 
 // admin only: clears the whole thumbnail/preview cache - everything regenerates on demand
 export const DELETE: APIRoute = async ({ locals }) => {
-  if (locals.user?.role !== "admin") {
-    return new Response(JSON.stringify({ error: "admin only" }), {
-      status: 403,
-      headers: { "content-type": "application/json" }
-    });
-  }
+  const denied = requireAdmin(locals);
+  if (denied) return denied;
   await clearThumbCache();
-  return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } });
+  return json(200, { ok: true });
 };

@@ -1,11 +1,6 @@
 import type { APIRoute } from "astro";
 import { listAuditLogRows, revertToPoint, scopeAuditRows } from "../../lib/auditLog";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
-const requireAdmin = (locals: App.Locals): Response | null =>
-  locals.user?.role === "admin" ? null : json(403, { error: "admin only" });
+import { json, requireAdmin } from "../../lib/http";
 
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;

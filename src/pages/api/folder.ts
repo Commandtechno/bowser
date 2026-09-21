@@ -1,10 +1,8 @@
 import type { APIRoute } from "astro";
 import { logCreateFolder } from "../../lib/auditLog";
+import { json } from "../../lib/http";
 import { canWrite } from "../../lib/roles";
 import { absToRootRel, createFolder, InvalidPathError, resolveInDir, rootDirFor } from "../../lib/media";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export const POST: APIRoute = async ({ request, locals }) => {
   if (!canWrite(locals.user!)) return json(403, { error: "read-only account" });

@@ -1,10 +1,8 @@
 import type { APIRoute } from "astro";
+import { json } from "../../lib/http";
 import { getMeta } from "../../lib/meta";
 import { classifyMedia } from "../../lib/mediaKind";
 import { InvalidPathError, resolveInDir, rootDirFor } from "../../lib/media";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export const GET: APIRoute = async ({ url, locals }) => {
   const relPath = url.searchParams.get("path");

@@ -1,11 +1,5 @@
 /// <reference types="astro/client" />
 
-interface ImportMetaEnv {
-  readonly ROOT_DIR: string;
-  readonly THUMBS_DIR?: string;
-  readonly DB_PATH?: string;
-}
-
 declare namespace App {
   interface Locals {
     user?: import("./lib/users").TUser;

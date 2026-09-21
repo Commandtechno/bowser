@@ -7,12 +7,10 @@ import {
   validatePassword,
   verifyPassword
 } from "../../lib/auth";
+import { json } from "../../lib/http";
 import { getPasswordHash, updateUser } from "../../lib/users";
 import { isPreviewMode } from "../../lib/previewMode";
 import { isSyntaxTheme } from "../../lib/themes";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export const GET: APIRoute = async ({ locals }) => json(200, { user: locals.user });
 

@@ -1,12 +1,10 @@
 import type { APIRoute } from "astro";
 import sharp from "sharp";
+import { json } from "../../lib/http";
 import { getAvatar, updateUser } from "../../lib/users";
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const AVATAR_SIZE = 128;
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 // any signed-in user can view any avatar (they're shown in the admin user list)
 export const GET: APIRoute = async ({ url }) => {

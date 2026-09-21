@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { stat } from "node:fs/promises";
+import { json } from "../../lib/http";
 import { canWrite } from "../../lib/roles";
 import { absToRootRel, homeRelative, InvalidPathError, resolveInDir, rootDirFor } from "../../lib/media";
 import {
@@ -11,9 +12,6 @@ import {
   MAX_DURATION_S,
   MIN_DURATION_S
 } from "../../lib/shareLinks";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 // every signed-in user can see who shared what, scoped down to their own home dir if
 // they're restricted to one (see users.homeDir) - admins are always unrestricted, so this

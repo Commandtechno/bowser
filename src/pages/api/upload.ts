@@ -1,10 +1,8 @@
 import type { APIRoute } from "astro";
 import { logUpload } from "../../lib/auditLog";
+import { json } from "../../lib/http";
 import { canWrite } from "../../lib/roles";
 import { absToRootRel, InvalidPathError, resolveInDir, rootDirFor, writeUploadedFile } from "../../lib/media";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 // uploads a single file, streamed straight to disk - "path" is the full destination path
 // (parent dirs + file name) within ROOT_DIR, so drag-dropped folders can be reproduced by
