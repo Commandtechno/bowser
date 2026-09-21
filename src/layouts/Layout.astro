@@ -6,11 +6,19 @@ interface Props {
 const { title } = Astro.props;
 
 // per-user accent color; the value is validated as #rrggbb before it ever reaches the db
-const accent = Astro.locals.user?.accentColor;
+// rendered onto <html> as data-* attributes, read back by src/lib/clientSession.ts
+const user = Astro.locals.user;
+const accent = user?.accentColor;
 ---
 
 <!doctype html>
-<html lang="en" style={accent ? `--accent: ${accent};` : undefined}>
+<html
+  lang="en"
+  style={accent ? `--accent: ${accent};` : undefined}
+  data-user-id={user?.id}
+  data-role={user?.role}
+  data-preview-mode={user?.previewMode}
+>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

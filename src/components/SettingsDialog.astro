@@ -194,27 +194,14 @@ const isAdmin = user.role === "admin";
   </div>
 </dialog>
 
-<script define:vars={{ currentUserId: user.id, isAdmin }}>
-  window.__currentUserId = currentUserId;
-  window.__isAdmin = isAdmin;
-</script>
-
 <script>
   import { html, render } from "lit-html";
+  import { currentUserId, isAdmin } from "../lib/clientSession";
   import { confirmAction } from "../lib/confirmDialog";
   import { notifyFsChanged } from "../lib/folderActions";
   import { showToast } from "../lib/toast";
 
-  declare global {
-    interface Window {
-      __currentUserId: number;
-      __isAdmin: boolean;
-    }
-  }
-
   const $dialog = document.getElementById("settings-dialog") as HTMLDialogElement;
-  const currentUserId = window.__currentUserId;
-  const isAdmin = window.__isAdmin;
 
   document.getElementById("settings-close")!.addEventListener("click", () => $dialog.close());
   // close when clicking the backdrop (the dialog element itself, not its children)

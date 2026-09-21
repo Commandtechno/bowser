@@ -1,7 +1,3 @@
----
-const previewMode = Astro.locals.user?.previewMode ?? "panel";
----
-
 <div class="container">
   <div class="topbar">
     <div id="path"></div>
@@ -25,10 +21,6 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
 <input type="file" id="upload-file-input" multiple hidden />
 <input type="file" id="upload-folder-input" multiple hidden />
 
-<script define:vars={{ previewMode }}>
-  window.__previewMode = previewMode;
-</script>
-
 <script>
   import { getCurrentPath } from "../lib/path";
   import { html, nothing, render } from "lit-html";
@@ -36,7 +28,8 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
   import { humanDate, humanSize } from "../lib/format";
   import { closePreview, openPreview, getPreviewItem } from "../lib/previewState";
   import { openContextMenu } from "../lib/contextMenu";
-  import { canWriteClient, createFolderInteractive, fileContextMenuItems, folderContextMenuItems } from "../lib/folderActions";
+  import { canWriteClient, initialPreviewMode } from "../lib/clientSession";
+  import { createFolderInteractive, fileContextMenuItems, folderContextMenuItems } from "../lib/folderActions";
   import { enqueueDrop, enqueueFiles, enqueueFileListWithPaths } from "../lib/uploadQueue";
   import "../lib/player";
 
@@ -53,12 +46,6 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
       import("@fancyapps/ui/dist/fancybox/fancybox.css")
     ]).then(([mod]) => (Fancybox = mod.Fancybox)));
 
-  declare global {
-    interface Window {
-      __previewMode?: string;
-    }
-  }
-
   const $path = document.getElementById("path")!;
   const $explorer = document.getElementById("explorer")!;
   const $sort = document.getElementById("sort") as HTMLSelectElement;
@@ -74,7 +61,7 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
   let sortKey = (localStorage.getItem("explorer:sort") ?? "name") as TSortKey;
   let sortAsc = (localStorage.getItem("explorer:asc") ?? "1") === "1";
   let view = localStorage.getItem("explorer:view") === "list" ? "list" : "grid";
-  let previewMode = window.__previewMode === "lightbox" ? "lightbox" : "panel";
+  let previewMode = initialPreviewMode;
 
   // grid tile size as a % of the original 160x200 tile / 120px thumb (100%) - default sits
   // ~25% smaller so more fits on screen without feeling cramped

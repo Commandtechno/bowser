@@ -2,6 +2,7 @@
 // /api/list, /api/file, /api/folder, /api/entry endpoints - shared by Explorer.astro's
 // grid and Sidebar.astro's tree
 
+import { canWriteClient } from "./clientSession";
 import { confirmAction } from "./confirmDialog";
 import type { TContextMenuItem } from "./contextMenu";
 import { downloadFolder, supportsFolderDownload } from "./downloadFolder";
@@ -10,16 +11,6 @@ import type { TFileEntry } from "./mediaUrls";
 import { showToast } from "./toast";
 
 const joinPath = (base: string[], relPath: string): string => [...base, ...relPath.split("/").filter(Boolean)].join("/");
-
-declare global {
-  interface Window {
-    __canWrite?: boolean;
-  }
-}
-
-// readonly accounts get a browse/download-only UI - mirrors the server-side canWrite
-// check in api/folder.ts, api/entry.ts and api/shares.ts, which is the actual enforcement
-export const canWriteClient = (): boolean => window.__canWrite !== false;
 
 // true if `path` is `prefix` or lives somewhere underneath it
 const isPathWithin = (path: string[], prefix: string[]): boolean =>

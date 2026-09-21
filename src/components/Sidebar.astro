@@ -6,13 +6,9 @@ const { dirs: rootDirs } = await listDir(rootDirFor(Astro.locals.user), "");
 ---
 
 <div class="sidebar">
-  <div class="tree" id="tree"></div>
+  <div class="tree" id="tree" data-root-dirs={JSON.stringify(rootDirs)}></div>
   <UserPanel />
 </div>
-
-<script define:vars={{ rootDirs }}>
-  window.__rootDirs = rootDirs;
-</script>
 
 <script>
   import { getCurrentPath } from "../lib/path";
@@ -20,19 +16,13 @@ const { dirs: rootDirs } = await listDir(rootDirFor(Astro.locals.user), "");
   import { openContextMenu } from "../lib/contextMenu";
   import { folderContextMenuItems } from "../lib/folderActions";
 
-  declare global {
-    interface Window {
-      __rootDirs: string[];
-    }
-  }
-
   const $tree = document.getElementById("tree")!;
 
   // path key ("" for root, else "a/b/c") -> child dir names, null while loading
   const cache = new Map<string, string[] | null>();
   const expanded = new Set<string>();
 
-  cache.set("", window.__rootDirs);
+  cache.set("", JSON.parse($tree.dataset.rootDirs!) as string[]);
 
   const fetchDirs = async (key: string): Promise<string[]> => {
     const res = await fetch(`/api/list?path=${encodeURIComponent(key)}`);

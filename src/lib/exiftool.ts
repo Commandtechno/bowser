@@ -8,6 +8,11 @@ import { runCapture } from "./exec";
 // numbered {readyN} marker
 const POOL_SIZE = 3;
 
+// an idle worker's process is shut down after this long and respawned on demand - keeps a
+// quiet server from pinning perl interpreters forever, and means the pool a dev-server
+// module reload leaves behind (which never gets another job) cleans itself up
+const IDLE_MS = 60_000;
+
 type TJob = {
   args: string[];
   resolve: (buf: Buffer) => void;
@@ -24,8 +29,10 @@ class Worker {
   private marker = Buffer.alloc(0);
   private job: TJob | null = null;
   private onDone: (() => void) | null = null;
+  private idleTimer: NodeJS.Timeout | null = null;
 
   run(job: TJob, seq: number, onDone: () => void): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
     this.busy = true;
     this.job = job;
     this.onDone = onDone;
@@ -53,6 +60,8 @@ class Worker {
     proc.stderr!.on("data", (chunk: Buffer) => (this.stderr += chunk));
     proc.on("error", err => this.finish(null, err));
     proc.on("close", () => {
+      // an idle-killed process can close after its replacement has already been spawned
+      if (this.proc !== proc) return;
       this.proc = null;
       this.finish(null, new Error("exiftool exited unexpectedly"));
     });
@@ -80,6 +89,8 @@ class Worker {
     this.chunks = [];
     if (!job) return;
 
+    this.idleTimer = setTimeout(() => this.kill(), IDLE_MS).unref();
+
     // a missing tag yields empty output with no error - that emptiness is meaningful to
     // callers (extractRawPreview's tag fallback), so only surface stderr alongside it
     if (payload && payload.length === 0 && this.stderr.trim())
@@ -91,19 +102,15 @@ class Worker {
   }
 }
 
-// pool state survives dev-server module reloads, matching db.ts's globalThis pattern -
-// otherwise every reload would strand a set of live exiftool processes
-const globalForExiftool = globalThis as unknown as {
-  __exiftoolPool?: { workers: Worker[]; queue: TJob[]; seq: number };
+const pool = {
+  workers: Array.from({ length: POOL_SIZE }, () => new Worker()),
+  queue: [] as TJob[],
+  seq: 0
 };
 
-const pool = (globalForExiftool.__exiftoolPool ??= (() => {
-  const workers = Array.from({ length: POOL_SIZE }, () => new Worker());
-  // stay_open workers also exit on their own when stdin hits EOF (parent death), this
-  // just makes shutdown prompt
-  process.once("exit", () => workers.forEach(w => w.kill()));
-  return { workers, queue: [] as TJob[], seq: 0 };
-})());
+// stay_open workers also exit on their own when stdin hits EOF (parent death), this
+// just makes shutdown prompt
+process.once("exit", () => pool.workers.forEach(w => w.kill()));
 
 const pump = (): void => {
   while (pool.queue.length > 0) {

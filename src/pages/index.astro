@@ -6,9 +6,6 @@ import ShareDialog from "../components/ShareDialog.astro";
 import Sidebar from "../components/Sidebar.astro";
 import UploadPanel from "../components/UploadPanel.astro";
 import Layout from "../layouts/Layout.astro";
-import { canWrite as userCanWrite } from "../lib/roles";
-
-const canWrite = userCanWrite(Astro.locals.user!);
 ---
 
 <Layout title="Bowser">
@@ -21,10 +18,6 @@ const canWrite = userCanWrite(Astro.locals.user!);
   <MoveDialog />
   <UploadPanel />
 </Layout>
-
-<script define:vars={{ canWrite }}>
-  window.__canWrite = canWrite;
-</script>
 
 <style>
   .container {

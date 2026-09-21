@@ -30,22 +30,13 @@ const makeLimiter = (max: number) => {
   };
 };
 
-// state survives dev-server module reloads, matching db.ts's globalThis pattern
-const globalForThumbs = globalThis as unknown as {
-  __thumbGen?: {
-    inFlight: Map<string, Promise<Buffer | null>>;
-    interactive: ReturnType<typeof makeLimiter>;
-    warm: ReturnType<typeof makeLimiter>;
-  };
-};
-
 // two lanes so a background warm sweep can never starve thumbnails the user is actually
 // looking at - warm work queues in its own (smaller) lane
-const state = (globalForThumbs.__thumbGen ??= {
-  inFlight: new Map(),
+const state = {
+  inFlight: new Map<string, Promise<Buffer | null>>(),
   interactive: makeLimiter(4),
   warm: makeLimiter(2)
-});
+};
 
 export const thumbCachePath = (sourcePath: string): string =>
   resolveInDir(THUMBS_DIR, absToRootRel(sourcePath)) + ".webp";

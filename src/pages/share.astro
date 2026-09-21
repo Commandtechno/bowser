@@ -29,16 +29,11 @@ const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "share
         <p class="hint">
           shared by <strong>{share!.createdByUsername}</strong> · expires {new Date(share!.expiresAt * 1000).toLocaleString()}
         </p>
-        <div id="explorer"></div>
+        <div id="explorer" data-token={token} data-root-name={rootName}></div>
       </div>
     )
   }
 </Layout>
-
-<script define:vars={{ token, rootName }}>
-  window.__shareToken = token;
-  window.__shareRootName = rootName;
-</script>
 
 <script>
   import { html, render } from "lit-html";
@@ -47,13 +42,6 @@ const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "share
   import { downloadFolder, supportsFolderDownload } from "../lib/downloadFolder";
   import { showToast } from "../lib/toast";
 
-  declare global {
-    interface Window {
-      __shareToken?: string;
-      __shareRootName?: string;
-    }
-  }
-
   const $path = document.getElementById("path");
   const $explorer = document.getElementById("explorer");
   const $downloadFolder = document.getElementById("download-folder") as HTMLButtonElement | null;
@@ -61,8 +49,8 @@ const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "share
   // this whole script only runs when the server confirmed the link is valid, but the
   // elements above are still typed as nullable - bail instead of asserting them away
   if ($path && $explorer && $downloadFolder) {
-    const token = window.__shareToken!;
-    const rootName = window.__shareRootName!;
+    const token = $explorer.dataset.token!;
+    const rootName = $explorer.dataset.rootName!;
 
     type TFileEntry = { name: string; size: number; mtime: number };
     type TListing = { dirs: string[]; files: TFileEntry[] };
