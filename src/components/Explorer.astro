@@ -663,7 +663,10 @@ const previewMode = Astro.locals.user?.previewMode ?? "panel";
     gap: 10px;
     width: 100%;
     height: auto;
-    padding: 4px 10px;
+    /* grid mode's min-height sizes tiles to the zoom level - way too tall for a list row -
+       so it's replaced here with a fixed, comfortable row height instead */
+    min-height: 44px;
+    padding: 6px 10px;
     text-align: left;
   }
 

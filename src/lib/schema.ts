@@ -90,17 +90,3 @@ export const auditLog = sqliteTable(
   },
   table => [index("idx_audit_log_created_at").on(table.createdAt)]
 );
-
-// optional 1:1 child of a share link - present only when the share is also exposed via
-// `rclone serve` over a real file-transfer protocol, not just the browser-based /share page
-export const shareServes = sqliteTable("share_serves", {
-  token: text("token")
-    .primaryKey()
-    .references(() => shareLinks.token, { onDelete: "cascade" }),
-  protocol: text("protocol").notNull(), // "webdav" | "sftp" | "ftp" | "http"
-  port: integer("port").notNull(),
-  password: text("password").notNull(),
-  createdAt: integer("created_at")
-    .notNull()
-    .default(sql`(unixepoch())`)
-});

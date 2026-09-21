@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { stat } from "node:fs/promises";
 import { InvalidPathError, resolveInDir, rootDirFor } from "../../lib/media";
 import { classifyMedia, iconFor } from "../../lib/mediaKind";
-import { buildThumb, getCachedDerivative, thumbCachePath } from "../../lib/thumbGen";
+import { buildThumb, clearThumbCache, getCachedDerivative, thumbCachePath } from "../../lib/thumbGen";
 
 // Response.redirect() marks its headers immutable, which throws once the auth middleware
 // appends its session cookie - build an ordinary mutable response instead
@@ -46,4 +46,16 @@ export const GET: APIRoute = async ({ url, locals }) => {
   return new Response(new Uint8Array(buffer), {
     headers: { "content-type": "image/webp", "cache-control": "private, max-age=3600" }
   });
+};
+
+// admin only: clears the whole thumbnail/preview cache - everything regenerates on demand
+export const DELETE: APIRoute = async ({ locals }) => {
+  if (locals.user?.role !== "admin") {
+    return new Response(JSON.stringify({ error: "admin only" }), {
+      status: 403,
+      headers: { "content-type": "application/json" }
+    });
+  }
+  await clearThumbCache();
+  return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } });
 };

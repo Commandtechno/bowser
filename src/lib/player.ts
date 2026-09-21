@@ -68,6 +68,23 @@ class PwPlayer extends HTMLElement {
   private scrubbing = false;
   private wasPlayingBeforeScrub = false;
   private onKeydown = (e: KeyboardEvent) => this.handleKey(e);
+  private onFullscreenChange = () => {
+    this.$(".pw-fs").innerHTML = document.fullscreenElement === this ? ICONS.fsExit : ICONS.fs;
+
+    // some browsers paint the video/canvas surface at the object-fit scale computed for the
+    // fullscreen box and never repaint it once the element returns to its normal (inline)
+    // size, even though its computed styles (width/object-fit) are already correct again -
+    // toggling display forces a real layout+paint pass and clears the stale frame
+    const surface = this.fallback ? this.canvas : this.video;
+    if (surface) {
+      requestAnimationFrame(() => {
+        const prevDisplay = surface.style.display;
+        surface.style.display = "none";
+        void surface.offsetHeight;
+        surface.style.display = prevDisplay;
+      });
+    }
+  };
   private volume = 1;
   private muted = false;
 
@@ -109,6 +126,7 @@ class PwPlayer extends HTMLElement {
 
   disconnectedCallback() {
     document.removeEventListener("keydown", this.onKeydown, true);
+    document.removeEventListener("fullscreenchange", this.onFullscreenChange);
     clearTimeout(this.hideTimer);
     // media elements keep playing even once detached from the document - stop it explicitly
     // instead of relying on gc timing (matters for the panel, which swaps players on every
@@ -120,6 +138,11 @@ class PwPlayer extends HTMLElement {
   private render() {
     const src = this.dataset.src ?? "";
     const poster = this.dataset.poster ?? "";
+
+    // not natively focusable (custom elements aren't) - needed so clicking the video surface
+    // can move focus onto the player itself (see bindSurfaceEvents), which the preview panel
+    // uses to tell whether the arrow keys should seek or navigate between files
+    this.tabIndex = -1;
 
     this.classList.add("pw-paused");
     this.innerHTML = `
@@ -212,23 +235,7 @@ class PwPlayer extends HTMLElement {
     // canvas fallback surface gets the same treatment once/if it's created - see initFallback)
     this.bindSurfaceEvents(video);
 
-    document.addEventListener("fullscreenchange", () => {
-      this.$(".pw-fs").innerHTML = document.fullscreenElement === this ? ICONS.fsExit : ICONS.fs;
-
-      // some browsers paint the video/canvas surface at the object-fit scale computed for the
-      // fullscreen box and never repaint it once the element returns to its normal (inline)
-      // size, even though its computed styles (width/object-fit) are already correct again -
-      // toggling display forces a real layout+paint pass and clears the stale frame
-      const surface = this.fallback ? this.canvas : this.video;
-      if (surface) {
-        requestAnimationFrame(() => {
-          const prevDisplay = surface.style.display;
-          surface.style.display = "none";
-          void surface.offsetHeight;
-          surface.style.display = prevDisplay;
-        });
-      }
-    });
+    document.addEventListener("fullscreenchange", this.onFullscreenChange);
 
     // auto-hide the control bar while a video is playing
     for (const evt of ["pointermove", "pointerdown"] as const) {
@@ -240,7 +247,10 @@ class PwPlayer extends HTMLElement {
   }
 
   private bindSurfaceEvents(el: HTMLElement) {
-    el.addEventListener("click", () => this.togglePlay());
+    el.addEventListener("click", () => {
+      this.focus({ preventScroll: true });
+      this.togglePlay();
+    });
     el.addEventListener("dblclick", () => this.toggleFullscreen());
   }
 

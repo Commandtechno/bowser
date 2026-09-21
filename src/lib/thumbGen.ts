@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import sharp from "sharp";
 import { absToRootRel, resolveInDir, THUMBS_DIR } from "./media";
@@ -100,6 +100,14 @@ export const getCachedDerivative = async (opts: {
 
   state.inFlight.set(cachePath, task);
   return task;
+};
+
+// wipes every cached thumbnail/preview/.fail marker - they all regenerate on demand. Removes
+// the children rather than THUMBS_DIR itself, which may be a mount point (docker volume).
+// A generation in flight during the wipe just recreates its own directory and lands normally
+export const clearThumbCache = async (): Promise<void> => {
+  const names = await readdir(THUMBS_DIR).catch(() => []);
+  await Promise.all(names.map(name => rm(join(THUMBS_DIR, name), { recursive: true, force: true })));
 };
 
 // renders the grid thumbnail for any thumbable media kind - shared by the on-demand

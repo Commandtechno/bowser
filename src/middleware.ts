@@ -1,10 +1,6 @@
 import type { MiddlewareHandler } from "astro";
 import { SESSION_COOKIE, setSessionCookie, validateSessionToken } from "./lib/auth";
 import { countUsers } from "./lib/db";
-// side-effecting import: kicks off rclone-serve reconciliation for existing protocol shares
-// on first module load, same "first request triggers boot-time setup" pattern as db.ts's
-// bootstrap (see rcloneServe.ts for why this one deliberately isn't awaited here)
-import "./lib/rcloneServe";
 
 const PUBLIC_PAGES = new Set(["/login", "/setup"]);
 

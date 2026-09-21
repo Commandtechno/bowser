@@ -4,7 +4,7 @@ services:
     ports:
       - "${APP_PORT:-8888}:8888"
     env_file:
-      # picks up any other vars from .env (e.g. a custom RCLONE_BIN) as container env -
+      # picks up any other vars from .env as container env -
       # the environment: block below still wins for the container-internal paths
       - path: .env
         required: false
@@ -12,8 +12,6 @@ services:
       ROOT_DIR: /files
       THUMBS_DIR: /thumbs
       DB_PATH: /data/app.db
-      RCLONE_BIN: rclone
-      MAX_RCLONE_SERVES: ${MAX_RCLONE_SERVES:-20}
     volumes:
       # the directory of files to serve - falls back to the same ROOT_DIR used for a native
       # (non-docker) run, so one .env works for both; override with ROOT_HOST_DIR if you want
@@ -25,9 +23,3 @@ services:
       - ${THUMBS_HOST_DIR:-${THUMBS_DIR:-./.thumbs}}:/thumbs
       - ${DATA_HOST_DIR:-./data}:/data
     restart: unless-stopped
-    # protocol-based share links (webdav/sftp/ftp/http, see src/lib/rcloneServe.ts) are each
-    # served by `rclone serve` on a port the app allocates at random from the OS's ephemeral
-    # range - those ports aren't known ahead of time, so they can't be individually published
-    # here. if you use that feature, either switch to `network_mode: host` (Linux only, and
-    # remove the `ports:` block above since it's then a no-op) or publish a fixed range you've
-    # also pointed the app at, which the app doesn't currently support out of the box.

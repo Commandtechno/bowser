@@ -14,6 +14,12 @@ pw-player {
   -webkit-user-select: none;
 }
 
+/* focused programmatically (see bindSurfaceEvents in player.ts) to mark the player as
+   "engaged" for arrow-key seeking, not for a visible focus ring - it has its own controls */
+pw-player:focus {
+  outline: none;
+}
+
 pw-player video,
 pw-player .pw-canvas {
   flex: 1;

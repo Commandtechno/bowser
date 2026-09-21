@@ -22,6 +22,9 @@ const isAdmin = user.role === "admin";
       )}
       <button class="tab-btn" type="button" data-tab="history">history</button>
       <button class="tab-btn" type="button" data-tab="trash">trash</button>
+      {isAdmin && (
+        <button class="tab-btn" type="button" data-tab="system">system</button>
+      )}
     </div>
 
     <div class="tab-content">
@@ -169,6 +172,24 @@ const isAdmin = user.role === "admin";
         </div>
         <div id="trash-list" class="entries-list"></div>
       </section>
+
+      {
+        isAdmin && (
+          <section class="tab-panel" data-tab="system" hidden>
+            <h3>
+              <span class="rule">──</span> system
+            </h3>
+
+            <div class="row">
+              <label>thumbnail cache</label>
+              <button class="btn subtle" id="thumbs-clear" type="button">
+                clear cache
+              </button>
+            </div>
+            <p class="hint">deletes every cached thumbnail and preview. they regenerate as folders are browsed.</p>
+          </section>
+        )
+      }
     </div>
   </div>
 </dialog>
@@ -336,8 +357,6 @@ const isAdmin = user.role === "admin";
     createdByUsername: string;
     createdAt: number;
     expiresAt: number;
-    protocol: string | null;
-    servePort: number | null;
   };
 
   const $sharesList = document.getElementById("shares-list")!;
@@ -402,10 +421,7 @@ const isAdmin = user.role === "admin";
                 >shared by ${s.createdByUsername} · ${new Date(s.createdAt * 1000).toLocaleDateString()} ·
                 ${expired
                   ? html`<span class="expired-badge">expired</span>`
-                  : `expires ${new Date(s.expiresAt * 1000).toLocaleString()}`}
-                ${s.protocol && !expired
-                  ? html` · <span class="protocol-badge">${s.protocol} :${s.servePort}</span>`
-                  : ""}</span
+                  : `expires ${new Date(s.expiresAt * 1000).toLocaleString()}`}</span
               >
             </div>
             <div class="row-actions">
@@ -877,6 +893,32 @@ const isAdmin = user.role === "admin";
     );
   };
 
+  // ---- system (only rendered for admins) ----
+
+  const $thumbsClear = document.getElementById("thumbs-clear") as HTMLButtonElement | null;
+
+  $thumbsClear?.addEventListener("click", async () => {
+    const confirmed = await confirmAction({
+      message: "clear the thumbnail cache? every thumbnail and preview will be regenerated on demand.",
+      confirmLabel: "clear cache",
+      danger: true,
+      key: "clear-thumb-cache"
+    });
+    if (!confirmed) return;
+    $thumbsClear.disabled = true;
+    try {
+      const res = await fetch("/api/thumb", { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        showToast(body.error ?? "failed to clear thumbnail cache", "error");
+        return;
+      }
+      showToast("thumbnail cache cleared", "success");
+    } finally {
+      $thumbsClear.disabled = false;
+    }
+  });
+
   // ---- load everything fresh whenever the dialog opens ----
 
   window.addEventListener("settingsOpen", () => {
@@ -1267,17 +1309,6 @@ const isAdmin = user.role === "admin";
   #settings-dialog .expired-badge,
   #settings-dialog .settled-badge {
     color: #ff6b81;
-  }
-
-  #settings-dialog .protocol-badge {
-    color: var(--primary);
-    background-color: var(--accent);
-    font-weight: bold;
-    font-size: 0.85em;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    padding: 1px 6px;
-    border-radius: 2px;
   }
 
   #settings-dialog .mini {

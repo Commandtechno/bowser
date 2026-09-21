@@ -16,16 +16,6 @@
         <option value="2592000">30 days</option>
       </select>
     </div>
-    <div class="row">
-      <label for="share-protocol">also serve over</label>
-      <select id="share-protocol">
-        <option value="">web link only</option>
-        <option value="webdav">WebDAV</option>
-        <option value="sftp">SFTP</option>
-        <option value="ftp">FTP</option>
-        <option value="http">HTTP</option>
-      </select>
-    </div>
     <div class="inline">
       <button class="btn" id="share-create">create link</button>
       <span class="msg" id="share-msg"></span>
@@ -40,54 +30,6 @@
     </div>
     <p class="hint" id="share-expiry-note"></p>
     <p class="hint">manage or revoke this link anytime from settings.</p>
-
-    <p class="hint err" id="serve-error" hidden></p>
-
-    <div id="share-serve-view" hidden>
-      <div class="serve-card">
-        <div class="serve-head">
-          <span class="serve-badge" id="serve-protocol-badge"></span>
-          <span class="hint">read-only - expires with the link above</span>
-        </div>
-
-        <div class="serve-fields">
-          <div class="serve-field">
-            <label for="serve-host">host</label>
-            <div class="inline">
-              <input type="text" id="serve-host" readonly />
-              <button class="btn small" id="serve-host-copy">copy</button>
-            </div>
-          </div>
-          <div class="serve-field">
-            <label for="serve-port">port</label>
-            <div class="inline">
-              <input type="text" id="serve-port" readonly />
-              <button class="btn small" id="serve-port-copy">copy</button>
-            </div>
-          </div>
-          <div class="serve-field">
-            <label for="serve-user">username</label>
-            <div class="inline">
-              <input type="text" id="serve-user" readonly />
-              <button class="btn small" id="serve-user-copy">copy</button>
-            </div>
-          </div>
-          <div class="serve-field">
-            <label for="serve-password">password</label>
-            <div class="inline">
-              <input type="text" id="serve-password" readonly />
-              <button class="btn small" id="serve-password-copy">copy</button>
-            </div>
-          </div>
-        </div>
-
-        <label class="hint" for="serve-command">pull the whole folder in one shot:</label>
-        <div class="inline">
-          <input type="text" id="serve-command" readonly />
-          <button class="btn small" id="serve-command-copy">copy</button>
-        </div>
-      </div>
-    </div>
   </div>
 </dialog>
 
@@ -99,20 +41,11 @@
   const $formView = document.getElementById("share-form-view")!;
   const $resultView = document.getElementById("share-result-view")!;
   const $duration = document.getElementById("share-duration") as HTMLSelectElement;
-  const $protocol = document.getElementById("share-protocol") as HTMLSelectElement;
   const $create = document.getElementById("share-create") as HTMLButtonElement;
   const $msg = document.getElementById("share-msg")!;
   const $linkInput = document.getElementById("share-link-input") as HTMLInputElement;
   const $copy = document.getElementById("share-copy")!;
   const $expiryNote = document.getElementById("share-expiry-note")!;
-  const $serveView = document.getElementById("share-serve-view")!;
-  const $serveError = document.getElementById("serve-error")!;
-  const $serveBadge = document.getElementById("serve-protocol-badge")!;
-  const $serveHost = document.getElementById("serve-host") as HTMLInputElement;
-  const $servePort = document.getElementById("serve-port") as HTMLInputElement;
-  const $serveUser = document.getElementById("serve-user") as HTMLInputElement;
-  const $servePassword = document.getElementById("serve-password") as HTMLInputElement;
-  const $serveCommand = document.getElementById("serve-command") as HTMLInputElement;
 
   let currentPath: string[] = [];
 
@@ -129,9 +62,6 @@
     $target.textContent = `/${currentPath.join("/")}`;
     $formView.hidden = false;
     $resultView.hidden = true;
-    $serveView.hidden = true;
-    $serveError.hidden = true;
-    $protocol.value = "";
     $msg.textContent = "";
     $create.disabled = false;
     $create.textContent = "create link";
@@ -147,15 +77,12 @@
     $create.disabled = true;
     $create.textContent = "creating…";
     flash("", true);
-    $serveView.hidden = true;
-    $serveError.hidden = true;
 
     try {
-      const protocol = $protocol.value || undefined;
       const res = await fetch("/api/shares", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ path: currentPath.join("/"), durationSeconds: durationSeconds(), protocol })
+        body: JSON.stringify({ path: currentPath.join("/"), durationSeconds: durationSeconds() })
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -165,28 +92,11 @@
         return;
       }
 
-      const data = (await res.json()) as {
-        share: { token: string; expiresAt: number };
-        serve?: { protocol: string; port: number; user: string; password: string; copyCommand: string };
-        serveError?: string;
-      };
+      const data = (await res.json()) as { share: { token: string; expiresAt: number } };
       $linkInput.value = `${location.origin}/share?token=${data.share.token}`;
       $expiryNote.textContent = `expires ${new Date(data.share.expiresAt * 1000).toLocaleString()}`;
       $formView.hidden = true;
       $resultView.hidden = false;
-
-      if (data.serve) {
-        $serveBadge.textContent = data.serve.protocol;
-        $serveHost.value = location.hostname;
-        $servePort.value = String(data.serve.port);
-        $serveUser.value = data.serve.user;
-        $servePassword.value = data.serve.password;
-        $serveCommand.value = data.serve.copyCommand;
-        $serveView.hidden = false;
-      } else if (data.serveError) {
-        $serveError.textContent = `protocol share failed to start: ${data.serveError}`;
-        $serveError.hidden = false;
-      }
 
       window.dispatchEvent(new Event("shareLinksChanged"));
     } catch {
@@ -207,11 +117,6 @@
   };
 
   $copy.addEventListener("click", () => copyInput($linkInput, "link"));
-  document.getElementById("serve-host-copy")!.addEventListener("click", () => copyInput($serveHost, "host"));
-  document.getElementById("serve-port-copy")!.addEventListener("click", () => copyInput($servePort, "port"));
-  document.getElementById("serve-user-copy")!.addEventListener("click", () => copyInput($serveUser, "username"));
-  document.getElementById("serve-password-copy")!.addEventListener("click", () => copyInput($servePassword, "password"));
-  document.getElementById("serve-command-copy")!.addEventListener("click", () => copyInput($serveCommand, "command"));
 </script>
 
 <style>
@@ -327,58 +232,5 @@
 
   .msg.err {
     color: #ff6b81;
-  }
-
-  .hint.err {
-    color: #ff6b81;
-  }
-
-  .btn.small {
-    padding: 5px 8px;
-    font-size: 0.8em;
-  }
-
-  .serve-card {
-    margin-top: 14px;
-    padding: 12px 14px;
-    background-color: var(--primary);
-    border: 1px solid var(--tertiary);
-  }
-
-  .serve-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
-  }
-
-  .serve-badge {
-    background-color: var(--accent);
-    color: var(--primary);
-    font-weight: bold;
-    font-size: 0.75em;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 2px 8px;
-    border-radius: 2px;
-  }
-
-  .serve-fields {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px 14px;
-    margin-bottom: 10px;
-  }
-
-  .serve-field label {
-    display: block;
-    color: lightgray;
-    font-size: 0.8em;
-    margin-bottom: 4px;
-  }
-
-  .serve-field input,
-  #serve-command {
-    font-family: monospace;
   }
 </style>

@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 
 // runs a system binary and captures its stdout as a buffer; rejects on non-zero exit
 // (used to shell out to ffmpeg/exiftool, which are expected to already be installed - see requirements.txt)
@@ -17,12 +17,3 @@ export const runCapture = (cmd: string, args: string[]): Promise<Buffer> =>
       resolve(Buffer.concat(chunks));
     });
   });
-
-// starts a system binary that's meant to keep running in the background (unlike runCapture,
-// this doesn't wait for exit) - used to shell out to `rclone serve`, see src/lib/rcloneServe.ts
-export const spawnLongRunning = (cmd: string, args: string[], opts?: { onExit?: (code: number | null) => void }): ChildProcess => {
-  const proc = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
-  proc.stderr.on("data", (chunk: Buffer) => console.error(`${cmd} ${args[0] ?? ""}:`, chunk.toString().trim()));
-  proc.on("exit", code => opts?.onExit?.(code));
-  return proc;
-};

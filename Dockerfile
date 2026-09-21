@@ -21,18 +21,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # system binaries the app shells out to (see requirements.txt) - ffmpeg/exiftool/poppler for
-# thumbnails+metadata, rclone for protocol-based share links (optional at runtime, but always
-# installed here so that feature works out of the box)
+# thumbnails+metadata
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg \
       exiftool \
       poppler-utils \
-      curl \
-      unzip \
-      ca-certificates \
-    && curl -fsSL https://rclone.org/install.sh | bash \
-    && apt-get purge -y curl unzip \
-    && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 # node_modules is copied rather than reinstalled with --prod so native modules (sharp,

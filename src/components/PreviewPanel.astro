@@ -129,13 +129,21 @@
   $prev.addEventListener("click", () => stepPreview(-1));
   $next.addEventListener("click", () => stepPreview(1));
 
+  // a video counts as "engaged" once it's been clicked into (pw-player focuses itself - see
+  // bindSurfaceEvents in lib/player.ts) or fullscreened - at that point the arrow keys should
+  // seek within it rather than jump files, same as it already works in the lightbox
+  const isPlayerEngaged = (): boolean => {
+    const player = $media.querySelector("pw-player");
+    return !!player && (document.fullscreenElement === player || player.contains(document.activeElement));
+  };
+
   // capture phase, same as pw-player's own keydown listener (see lib/player.ts) - registered
   // at page load, before any player element exists, so this always runs first regardless of
   // when a player is created. Arrow keys are reserved for moving between files in the panel
-  // (unlike the lightbox, where an active video keeps them for seeking) - stopping the event
-  // here means it never reaches the player's own arrow-key handling. j/l (10s skip) and the
-  // rest of the player's shortcuts are untouched, so seeking is still available, just not on
-  // the arrow keys while the panel is in charge of them.
+  // (unlike the lightbox, where an active video keeps them for seeking), UNLESS the video is
+  // engaged (see isPlayerEngaged) - then we bow out and let the event fall through to the
+  // player's own capture-phase listener, which seeks instead. j/l (10s skip) and the rest of
+  // the player's shortcuts are untouched either way.
   document.addEventListener(
     "keydown",
     e => {
@@ -145,6 +153,7 @@
       if (e.key === "Escape") {
         closePreview();
       } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        if (isPlayerEngaged()) return;
         e.preventDefault();
         e.stopImmediatePropagation();
         stepPreview(e.key === "ArrowLeft" ? -1 : 1);

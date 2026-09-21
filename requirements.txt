@@ -4,7 +4,3 @@ ffmpeg     # video thumbnail frame extraction + audio cover art (src/lib/preview
 exiftool   # raw image (RWL, CR2, NEF, ARW, DNG, ...) preview extraction (src/lib/preview.ts);
            # also used for image/raw/pdf metadata (src/lib/meta.ts)
 poppler    # pdftoppm, pdf first-page thumbnails (src/lib/preview.ts)
-
-# optional - the app works without it, protocol-based share links (WebDAV/SFTP/FTP/HTTP)
-# just report a serveError until it's installed
-rclone     # `rclone serve`, powers protocol-based share links (src/lib/rcloneServe.ts)
