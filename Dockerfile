@@ -33,6 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # same base image/arch in the build stage
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+# sql migrations, applied on boot by src/lib/db/index.ts
+COPY --from=build /app/drizzle ./drizzle
 COPY package.json ./
 
 # ROOT_DIR/THUMBS_DIR/DB_PATH are meant to be bind-mounted volumes (see docker-compose.yml)

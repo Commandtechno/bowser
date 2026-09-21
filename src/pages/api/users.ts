@@ -6,20 +6,9 @@ import {
   validatePassword,
   validateUsername
 } from "../../lib/auth";
-import {
-  createUser,
-  DEFAULT_ROLE,
-  deleteUser,
-  getUserById,
-  getUserWithHash,
-  isValidRole,
-  listUsers,
-  ROLES,
-  setHomeDir,
-  setPasswordHash,
-  setRole
-} from "../../lib/db";
 import { InvalidPathError, validateHomeDir } from "../../lib/media";
+import { DEFAULT_ROLE, isValidRole, ROLES } from "../../lib/roles";
+import { createUser, deleteUser, getUserById, getUserWithHash, listUsers, updateUser } from "../../lib/users";
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -69,7 +58,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
   }
 
-  const user = await createUser(username, await hashPassword(password), targetRole, normalizedHomeDir);
+  const user = await createUser({
+    username,
+    passwordHash: await hashPassword(password),
+    role: targetRole,
+    homeDir: normalizedHomeDir
+  });
   return json(200, { user });
 };
 
@@ -98,28 +92,28 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
   if (password !== undefined) {
     if (!validatePassword(password))
       return json(400, { error: `password must be at least ${MIN_PASSWORD_LEN} characters` });
-    await setPasswordHash(id, await hashPassword(password));
+    await updateUser(id, { passwordHash: await hashPassword(password) });
     await invalidateUserSessions(id); // force re-login everywhere with the new password
   }
 
   if (role !== undefined) {
     if (!isValidRole(role)) return json(400, { error: `role must be one of ${ROLES.join(", ")}` });
     if (id === locals.user!.id) return json(400, { error: "cannot change your own role" });
-    await setRole(id, role);
+    await updateUser(id, { role });
     // becoming admin always lifts any restriction - admins are never restricted to a folder
-    if (role === "admin" && homeDir === undefined && existing.homeDir) await setHomeDir(id, null);
+    if (role === "admin" && homeDir === undefined && existing.homeDir) await updateUser(id, { homeDir: null });
   }
 
   if (homeDir !== undefined) {
     if (homeDir === null || homeDir === "") {
-      await setHomeDir(id, null);
+      await updateUser(id, { homeDir: null });
     } else if (typeof homeDir !== "string") {
       return json(400, { error: "homeDir must be a string" });
     } else {
       const effectiveRole = isValidRole(role) ? role : existing.role;
       if (effectiveRole === "admin") return json(400, { error: "admins cannot be restricted to a folder" });
       try {
-        await setHomeDir(id, await validateHomeDir(homeDir));
+        await updateUser(id, { homeDir: await validateHomeDir(homeDir) });
       } catch (e) {
         if (e instanceof InvalidPathError) return json(400, { error: e.message });
         throw e;

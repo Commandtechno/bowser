@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { stat } from "node:fs/promises";
-import { canWrite } from "../../lib/db";
+import { canWrite } from "../../lib/roles";
 import { absToRootRel, homeRelative, InvalidPathError, resolveInDir, rootDirFor } from "../../lib/media";
 import {
   createShareLink,

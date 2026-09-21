@@ -1,24 +1,37 @@
-// action logging + the trash/revert engine - wraps media.ts (the actual filesystem layer)
-// and db.ts (the audit_log table) the same way shareLinks.ts wraps db.ts's share tables.
-// API routes call the functions here rather than media.ts directly for anything mutating,
+// action logging + the trash/revert engine - pairs media.ts (the actual filesystem layer)
+// with the audit_log table. API routes call the functions here rather than media.ts directly for anything mutating,
 // so every create/upload/move/delete is logged in the same transaction-of-intent as the fs op.
 
+import { and, desc, eq, getTableColumns, gt, isNull, lt, ne } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
-import {
-  getAuditLogRow,
-  insertAuditLog,
-  listActiveTrash as listActiveTrashRows,
-  listAuditLogAfter,
-  listAuditLogRows as listAuditLogRowsFromDb,
-  markAuditLogPurged,
-  markAuditLogUndone,
-  type TAuditLogRow
-} from "./db";
+import { db } from "./db";
+import { auditLog, users, type TAuditAction } from "./db/schema";
 import { homeRelative, InvalidPathError, moveEntry, ROOT_DIR, resolveInDir, TRASH_DIR, uniqueName } from "./media";
+import { nowS } from "./time";
 
-export type { TAuditLogRow };
+const undoneByUser = alias(users, "undone_by_user");
+const purgedByUser = alias(users, "purged_by_user");
+
+// every read joins in usernames directly (rather than leaving the client to resolve user ids)
+// since the audit log/trash are viewable by readonly accounts too, who can't hit the
+// admin-only /api/users to look names up themselves
+const auditLogQuery = () =>
+  db
+    .select({
+      ...getTableColumns(auditLog),
+      username: users.username,
+      undoneByUsername: undoneByUser.username,
+      purgedByUsername: purgedByUser.username
+    })
+    .from(auditLog)
+    .innerJoin(users, eq(users.id, auditLog.userId))
+    .leftJoin(undoneByUser, eq(undoneByUser.id, auditLog.undoneBy))
+    .leftJoin(purgedByUser, eq(purgedByUser.id, auditLog.purgedBy));
+
+export type TAuditLogRow = Awaited<ReturnType<typeof auditLogQuery>>[number];
 
 type TDeleteDetail = { trashId: string; isDir: boolean; size: number | null };
 type TMoveDetail = { from: string; to: string };
@@ -30,17 +43,50 @@ export class NotRevertibleError extends Error {}
 
 const parentOf = (relPath: string): string => relPath.split("/").slice(0, -1).join("/");
 
-const insert = (userId: number, action: TAuditLogRow["action"], path: string, detail: unknown): Promise<number> =>
-  insertAuditLog({ userId, action, path, detail: detail == null ? null : JSON.stringify(detail) });
+const insert = async (userId: number, action: TAuditAction, path: string, detail: unknown): Promise<number> => {
+  const [{ id }] = await db
+    .insert(auditLog)
+    .values({ userId, action, path, detail: detail == null ? null : JSON.stringify(detail) })
+    .returning({ id: auditLog.id });
+  return id;
+};
 
 const detailOf = <T>(row: TAuditLogRow): T => JSON.parse(row.detail!) as T;
 
+const getAuditLogRow = async (id: number): Promise<TAuditLogRow | null> => {
+  const [row] = await auditLogQuery().where(eq(auditLog.id, id));
+  return row ?? null;
+};
+
+const markUndone = async (id: number, userId: number): Promise<void> => {
+  await db.update(auditLog).set({ undoneAt: nowS(), undoneBy: userId }).where(eq(auditLog.id, id));
+};
+
+const markPurged = async (id: number, userId: number): Promise<void> => {
+  await db.update(auditLog).set({ purgedAt: nowS(), purgedBy: userId }).where(eq(auditLog.id, id));
+};
+
 // ---- reads, viewable by every signed-in user (History/Trash tabs) ----
 
+// newest-first, cursor-paginated for the settings History tab
 export const listAuditLogRows = (opts: { beforeId?: number; limit: number }): Promise<TAuditLogRow[]> =>
-  listAuditLogRowsFromDb(opts);
+  auditLogQuery()
+    .where(opts.beforeId !== undefined ? lt(auditLog.id, opts.beforeId) : undefined)
+    .orderBy(desc(auditLog.id))
+    .limit(opts.limit);
 
-export const listActiveTrash = (): Promise<TAuditLogRow[]> => listActiveTrashRows();
+// currently-trashed items: deletes that haven't been restored or permanently purged
+export const listActiveTrash = (): Promise<TAuditLogRow[]> =>
+  auditLogQuery()
+    .where(and(eq(auditLog.action, "delete"), isNull(auditLog.undoneAt), isNull(auditLog.purgedAt)))
+    .orderBy(desc(auditLog.id));
+
+// active (not yet undone, and not a terminal purge) rows newer than `id`, newest-first -
+// the "everything that happened after this point" set that a revert-to-here cascade walks
+const listAuditLogAfter = (id: number): Promise<TAuditLogRow[]> =>
+  auditLogQuery()
+    .where(and(gt(auditLog.id, id), isNull(auditLog.undoneAt), ne(auditLog.action, "purge")))
+    .orderBy(desc(auditLog.id));
 
 // restricted users (see users.homeDir) only see rows that touch their own home dir - every
 // path-shaped field (the top-level `path`, plus move/restore's detail fields) is translated
@@ -114,7 +160,7 @@ export const restoreFromTrash = async (userId: number, logId: number): Promise<{
   const restoredPath = parentRel ? `${parentRel}/${name}` : name;
 
   await rename(join(TRASH_DIR, trashId), join(parentAbs, name));
-  await markAuditLogUndone(logId, userId);
+  await markUndone(logId, userId);
   const newLogId = await insert(userId, "restore", restoredPath, {
     trashId,
     fromLogId: logId,
@@ -133,12 +179,12 @@ export const purgeTrashEntry = async (userId: number, logId: number): Promise<nu
 
   const { trashId } = detailOf<TDeleteDetail>(row);
   await rm(join(TRASH_DIR, trashId), { recursive: true, force: true });
-  await markAuditLogPurged(logId, userId);
+  await markPurged(logId, userId);
   return insert(userId, "purge", row.path, { trashId, fromLogId: logId } satisfies TPurgeDetail);
 };
 
 export const purgeAllTrash = async (userId: number): Promise<number> => {
-  const rows = await listActiveTrashRows();
+  const rows = await listActiveTrash();
   for (const row of rows) await purgeTrashEntry(userId, row.id);
   return rows.length;
 };
@@ -157,14 +203,14 @@ export const revertEntry = async (userId: number, logId: number): Promise<number
     case "create_folder":
     case "upload": {
       const newLogId = await softDelete(userId, row.path);
-      await markAuditLogUndone(logId, userId);
+      await markUndone(logId, userId);
       return newLogId;
     }
     case "move": {
       const { from, to } = detailOf<TMoveDetail>(row);
       await moveEntry(ROOT_DIR, to, from);
       const newLogId = await insert(userId, "move", from, { from: to, to: from } satisfies TMoveDetail);
-      await markAuditLogUndone(logId, userId);
+      await markUndone(logId, userId);
       return newLogId;
     }
     case "delete": {
@@ -174,7 +220,7 @@ export const revertEntry = async (userId: number, logId: number): Promise<number
     case "restore": {
       const { restoredPath } = detailOf<TRestoreDetail>(row);
       const newLogId = await softDelete(userId, restoredPath);
-      await markAuditLogUndone(logId, userId);
+      await markUndone(logId, userId);
       return newLogId;
     }
     default:

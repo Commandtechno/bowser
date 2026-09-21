@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import sharp from "sharp";
-import { getAvatar, setAvatar } from "../../lib/db";
+import { getAvatar, updateUser } from "../../lib/users";
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const AVATAR_SIZE = 128;
@@ -47,11 +47,11 @@ export const POST: APIRoute = async ({ request, locals }) => {
     return json(400, { error: "could not read image" });
   }
 
-  await setAvatar(user.id, webp);
+  await updateUser(user.id, { avatar: webp });
   return json(200, { ok: true });
 };
 
 export const DELETE: APIRoute = async ({ locals }) => {
-  await setAvatar(locals.user!.id, null);
+  await updateUser(locals.user!.id, { avatar: null });
   return json(200, { ok: true });
 };

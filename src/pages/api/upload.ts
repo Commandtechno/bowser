@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { logUpload } from "../../lib/auditLog";
-import { canWrite } from "../../lib/db";
+import { canWrite } from "../../lib/roles";
 import { absToRootRel, InvalidPathError, resolveInDir, rootDirFor, writeUploadedFile } from "../../lib/media";
 
 const json = (status: number, body: unknown): Response =>

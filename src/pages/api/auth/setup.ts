@@ -7,7 +7,7 @@ import {
   validatePassword,
   validateUsername
 } from "../../../lib/auth";
-import { countUsers, createUser } from "../../../lib/db";
+import { countUsers, createUser } from "../../../lib/users";
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -29,7 +29,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (!validatePassword(password))
     return json(400, { error: `password must be at least ${MIN_PASSWORD_LEN} characters` });
 
-  const user = await createUser(username, await hashPassword(password), "admin");
+  const user = await createUser({ username, passwordHash: await hashPassword(password), role: "admin", homeDir: null });
   const { token } = await createSession(user.id);
   setSessionCookie(cookies, token);
   return json(200, { ok: true });

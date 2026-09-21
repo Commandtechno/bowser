@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { burnVerify, createSession, setSessionCookie, validateUsername, verifyPassword } from "../../../lib/auth";
-import { getUserWithHash } from "../../../lib/db";
+import { getUserWithHash } from "../../../lib/users";
 
 // naive in-memory brute-force throttle: 5 bad tries per username locks it for 60s
 const FAIL_LIMIT = 5;

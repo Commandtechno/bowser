@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1789987236863,
+      "tag": "0000_wandering_black_tom",
+      "breakpoints": true
+    }
+  ]
+}

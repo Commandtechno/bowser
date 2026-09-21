@@ -7,7 +7,7 @@ import {
   validatePassword,
   verifyPassword
 } from "../../lib/auth";
-import { getPasswordHash, setAccentColor, setPasswordHash, setPreviewMode, setSyntaxTheme } from "../../lib/db";
+import { getPasswordHash, updateUser } from "../../lib/users";
 import { isPreviewMode } from "../../lib/previewMode";
 import { isSyntaxTheme } from "../../lib/themes";
 
@@ -37,17 +37,17 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
   if (accentColor !== undefined) {
     if (typeof accentColor !== "string" || !ACCENT_RE.test(accentColor))
       return json(400, { error: "accent must be a #rrggbb color" });
-    await setAccentColor(user.id, accentColor);
+    await updateUser(user.id, { accentColor });
   }
 
   if (syntaxTheme !== undefined) {
     if (!isSyntaxTheme(syntaxTheme)) return json(400, { error: "unknown syntax theme" });
-    await setSyntaxTheme(user.id, syntaxTheme);
+    await updateUser(user.id, { syntaxTheme });
   }
 
   if (previewMode !== undefined) {
     if (!isPreviewMode(previewMode)) return json(400, { error: "unknown preview mode" });
-    await setPreviewMode(user.id, previewMode);
+    await updateUser(user.id, { previewMode });
   }
 
   if (newPassword !== undefined) {
@@ -59,7 +59,7 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
     if (!currentHash || !(await verifyPassword(currentHash, currentPassword)))
       return json(403, { error: "current password is incorrect" });
 
-    await setPasswordHash(user.id, await hashPassword(newPassword));
+    await updateUser(user.id, { passwordHash: await hashPassword(newPassword) });
     await invalidateOtherSessions(user.id, locals.sessionToken!);
   }
 

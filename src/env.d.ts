@@ -8,7 +8,7 @@ interface ImportMetaEnv {
 
 declare namespace App {
   interface Locals {
-    user?: import("./lib/db").TUser;
+    user?: import("./lib/users").TUser;
     sessionToken?: string;
   }
 }

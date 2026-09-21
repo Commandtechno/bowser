@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from "astro";
 import { SESSION_COOKIE, setSessionCookie, validateSessionToken } from "./lib/auth";
-import { countUsers } from "./lib/db";
+import { countUsers } from "./lib/users";
 
 const PUBLIC_PAGES = new Set(["/login", "/setup"]);
 

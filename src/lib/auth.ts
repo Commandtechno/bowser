@@ -1,23 +1,16 @@
 import { hash, verify } from "@node-rs/argon2";
 import type { AstroCookies } from "astro";
+import { and, eq, ne } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
-import {
-  deleteOtherSessions,
-  deleteSession,
-  deleteUserSessions,
-  getSession,
-  getUserById,
-  insertSession,
-  updateSessionExpiry,
-  type TUser
-} from "./db";
+import { db } from "./db";
+import { sessions } from "./db/schema";
+import { nowS } from "./time";
+import { getUserById, type TUser } from "./users";
 
 export const SESSION_COOKIE = "session";
 
 const SESSION_TTL_S = 30 * 24 * 60 * 60; // 30 days
 const RENEW_BELOW_S = 15 * 24 * 60 * 60; // sliding renewal once under 15 days remain
-
-const now = (): number => Math.floor(Date.now() / 1000);
 
 // sessions are stored by the sha256 of the token, so a leaked db never yields usable cookies
 const tokenToId = (token: string): string => createHash("sha256").update(token).digest("hex");
@@ -31,23 +24,23 @@ export const verifyPassword = (passwordHash: string, password: string): Promise<
 const dummyHash = hash("dummy-password-for-timing");
 export const burnVerify = async (): Promise<boolean> => verify(await dummyHash, "burn").catch(() => false);
 
-export type TSession = { id: string; userId: number; expiresAt: number };
+export type TSession = Omit<typeof sessions.$inferSelect, "createdAt">;
 
 export const createSession = async (userId: number): Promise<{ token: string; session: TSession }> => {
   const token = randomBytes(32).toString("base64url");
-  const session: TSession = { id: tokenToId(token), userId, expiresAt: now() + SESSION_TTL_S };
-  await insertSession(session);
+  const session: TSession = { id: tokenToId(token), userId, expiresAt: nowS() + SESSION_TTL_S };
+  await db.insert(sessions).values(session);
   return { token, session };
 };
 
 // returns the user for a valid token, extending the expiry when it is past the halfway point
 export const validateSessionToken = async (token: string): Promise<{ user: TUser; session: TSession } | null> => {
   const id = tokenToId(token);
-  const row = await getSession(id);
+  const [row] = await db.select().from(sessions).where(eq(sessions.id, id));
   if (!row) return null;
 
-  if (row.expiresAt <= now()) {
-    await deleteSession(id);
+  if (row.expiresAt <= nowS()) {
+    await db.delete(sessions).where(eq(sessions.id, id));
     return null;
   }
 
@@ -55,21 +48,26 @@ export const validateSessionToken = async (token: string): Promise<{ user: TUser
   if (!user) return null;
 
   let expiresAt = row.expiresAt;
-  if (expiresAt - now() < RENEW_BELOW_S) {
-    expiresAt = now() + SESSION_TTL_S;
-    await updateSessionExpiry(id, expiresAt);
+  if (expiresAt - nowS() < RENEW_BELOW_S) {
+    expiresAt = nowS() + SESSION_TTL_S;
+    await db.update(sessions).set({ expiresAt }).where(eq(sessions.id, id));
   }
 
   return { user, session: { id, userId: row.userId, expiresAt } };
 };
 
-export const invalidateSession = (token: string): Promise<void> => deleteSession(tokenToId(token));
+export const invalidateSession = async (token: string): Promise<void> => {
+  await db.delete(sessions).where(eq(sessions.id, tokenToId(token)));
+};
 
 // e.g. after a password change: kick every other device
-export const invalidateOtherSessions = (userId: number, keepToken: string): Promise<void> =>
-  deleteOtherSessions(userId, tokenToId(keepToken));
+export const invalidateOtherSessions = async (userId: number, keepToken: string): Promise<void> => {
+  await db.delete(sessions).where(and(eq(sessions.userId, userId), ne(sessions.id, tokenToId(keepToken))));
+};
 
-export const invalidateUserSessions = (userId: number): Promise<void> => deleteUserSessions(userId);
+export const invalidateUserSessions = async (userId: number): Promise<void> => {
+  await db.delete(sessions).where(eq(sessions.userId, userId));
+};
 
 export const setSessionCookie = (cookies: AstroCookies, token: string): void => {
   cookies.set(SESSION_COOKIE, token, {
