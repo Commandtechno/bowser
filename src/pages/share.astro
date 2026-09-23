@@ -11,7 +11,7 @@ if (invalid) Astro.response.status = 404;
 const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "shared folder") : "";
 ---
 
-<Layout title={invalid ? "Link expired - Bowser" : `${rootName} (shared) - Bowser`}>
+<Layout title={invalid ? "Link expired" : `${rootName} (shared)`}>
   {
     invalid ? (
       <div class="wrap">
@@ -23,13 +23,16 @@ const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "share
     ) : (
       <div class="container">
         <div class="topbar">
-          <div id="path"></div>
-          <button class="btn" id="download-folder" title="download this folder">download folder</button>
+          <div id="path" />
+          <button class="btn" id="download-folder" title="download this folder">
+            download folder
+          </button>
         </div>
         <p class="hint">
-          shared by <strong>{share!.createdByUsername}</strong> · expires {new Date(share!.expiresAt * 1000).toLocaleString()}
+          shared by <strong>{share!.createdByUsername}</strong> · expires{" "}
+          {new Date(share!.expiresAt * 1000).toLocaleString()}
         </p>
-        <div id="explorer" data-token={token} data-root-name={rootName}></div>
+        <div id="explorer" data-token={token} data-root-name={rootName} />
       </div>
     )
   }
@@ -41,6 +44,7 @@ const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "share
   import { humanDate, humanSize } from "../lib/format";
   import { downloadFolder, supportsFolderDownload } from "../lib/downloadFolder";
   import { showToast } from "../lib/toast";
+  import { folderIcon } from "../lib/folderIcon";
 
   const $path = document.getElementById("path");
   const $explorer = document.getElementById("explorer");
@@ -75,12 +79,11 @@ const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "share
 
     const renderExplorer = (subPath: string[], listing: TListing) => {
       const items = [];
-
       for (const dir of listing.dirs) {
         const dirPath = [...subPath, dir];
         items.push(
           html`<a class="item dir" href=${subPathHref(dirPath)}>
-            <img src="/folder.svg" alt="folder" class="thumb" width="120" height="120" />
+            ${folderIcon}
             <div class="name">${dir}</div>
           </a>`
         );
@@ -106,6 +109,7 @@ const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "share
 
     const onUpdate = async () => {
       const subPath = getSubPath();
+      document.title = `${subPath.at(-1) ?? rootName} (shared)`;
       renderBreadcrumb(subPath);
 
       const res = await fetch(listUrl(subPath));

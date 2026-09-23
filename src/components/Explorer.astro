@@ -31,6 +31,7 @@
   import { canWriteClient, initialPreviewMode } from "../lib/clientSession";
   import { createFolderInteractive, fileContextMenuItems, folderContextMenuItems } from "../lib/folderActions";
   import { enqueueDrop, enqueueFiles, enqueueFileListWithPaths } from "../lib/uploadQueue";
+  import { folderIcon } from "../lib/folderIcon";
   import "../lib/player";
 
   // fancybox (js + css) is only needed in lightbox mode - dynamically imported so panel-mode
@@ -72,7 +73,8 @@
   const ZOOM_SNAP_THRESHOLD = 2;
 
   const clampZoom = (value: number): number => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
-  const snapZoom = (value: number): number => ZOOM_SNAP_POINTS.find(p => Math.abs(p - value) <= ZOOM_SNAP_THRESHOLD) ?? value;
+  const snapZoom = (value: number): number =>
+    ZOOM_SNAP_POINTS.find(p => Math.abs(p - value) <= ZOOM_SNAP_THRESHOLD) ?? value;
 
   let zoom = clampZoom(Number(localStorage.getItem("explorer:zoom")) || ZOOM_DEFAULT);
 
@@ -120,7 +122,7 @@
             openContextMenu(e.clientX, e.clientY, folderContextMenuItems(dirPath));
           }}
         >
-          <img src="/folder.svg" alt="folder" class="thumb" width="120" height="120" />
+          ${folderIcon}
           <div class="name">${dir}</div>
         </a>`
       );
@@ -186,7 +188,15 @@
             openContextMenu(e.clientX, e.clientY, fileContextMenuItems(currentPath, file));
           }}
         >
-          <img src="${thumbUrl}" data-src="${viewUrl}" class="thumb" alt="thumbnail" width="120" height="120" loading="lazy" />
+          <img
+            src="${thumbUrl}"
+            data-src="${viewUrl}"
+            class="thumb"
+            alt="thumbnail"
+            width="120"
+            height="120"
+            loading="lazy"
+          />
           <div class="name">${file.name}</div>
           <div class="meta">${humanSize(file.size)}</div>
           <div class="meta">${humanDate(file.mtime)}</div>
@@ -235,6 +245,8 @@
     closePreview();
 
     const currentPath = getCurrentPath();
+    document.title = currentPath.at(-1) ?? "Bowser";
+
     const pathEls = [html`<a class="seg" href="#">home</a><span class="div">/</span>`];
 
     let segIndex = 0;
@@ -566,7 +578,6 @@
     outline: 2px dashed var(--accent);
     outline-offset: -6px;
   }
-
 </style>
 
 <style is:global>
