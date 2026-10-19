@@ -18,7 +18,8 @@ $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
 $logDir = Join-Path $root ".bowser\logs"
 New-Item -ItemType Directory -Force $logDir | Out-Null
 $log = Join-Path $logDir "service.log"
-function Write-Log($message) { Add-Content $log "[$(Get-Date -Format s)] $message" }
+# a log line is never worth taking the service down for
+function Write-Log($message) { Add-Content $log "[$(Get-Date -Format s)] $message" -ErrorAction SilentlyContinue }
 
 # native output goes through cmd's redirection - a transcript doesn't capture it, and piping
 # stderr in Windows PowerShell turns each line into an error record
