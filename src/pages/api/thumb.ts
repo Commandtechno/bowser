@@ -6,16 +6,18 @@ import { classifyMedia, iconFor } from "../../lib/mediaKind";
 import { buildThumb, clearThumbCache, getCachedDerivative, thumbCachePath } from "../../lib/thumbGen";
 
 // Response.redirect() marks its headers immutable, which throws once the auth middleware
-// appends its session cookie - build an ordinary mutable response instead
-const iconRedirect = (relPath: string, url: URL): Response =>
-  new Response(null, { status: 302, headers: { location: new URL(iconFor(relPath), url).href } });
+// appends its session cookie - build an ordinary mutable response instead. the location stays
+// root-relative: behind `tailscale serve` the request url is http://127.0.0.1:8888, so an
+// absolute one would send remote browsers to their own loopback
+const iconRedirect = (relPath: string): Response =>
+  new Response(null, { status: 302, headers: { location: iconFor(relPath) } });
 
 export const GET: APIRoute = async ({ url, locals }) => {
   const relPath = url.searchParams.get("path");
   if (!relPath) return new Response(null, { status: 400 });
 
   const kind = classifyMedia(relPath);
-  if (kind === "unknown" || kind === "code") return iconRedirect(relPath, url);
+  if (kind === "unknown" || kind === "code") return iconRedirect(relPath);
 
   let sourcePath: string;
   let thumbPath: string;
@@ -42,7 +44,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
     sourceMtimeMs: sourceStat.mtimeMs,
     generate: () => buildThumb(sourcePath, kind)
   });
-  if (!buffer) return iconRedirect(relPath, url);
+  if (!buffer) return iconRedirect(relPath);
 
   return new Response(new Uint8Array(buffer), {
     headers: { "content-type": "image/webp", "cache-control": "private, max-age=3600" }
