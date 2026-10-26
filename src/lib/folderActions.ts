@@ -6,6 +6,7 @@ import { canWriteClient } from "./clientSession";
 import { confirmAction } from "./confirmDialog";
 import type { TContextMenuItem } from "./contextMenu";
 import { downloadFolder, supportsFolderDownload } from "./downloadFolder";
+import { errorMessage } from "./http";
 import { getCurrentPath, updatePath } from "./path";
 import type { TFileEntry } from "./media";
 import { showToast } from "./toast";
@@ -49,8 +50,7 @@ export const createFolderInteractive = async (dirPath: string[]): Promise<void> 
       body: JSON.stringify({ path: [...dirPath, name].join("/") })
     });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      showToast(body.error ?? "failed to create folder", "error");
+      showToast(await errorMessage(res, "failed to create folder"), "error");
       return;
     }
     notifyFsChanged([[...dirPath, name]]);
@@ -73,8 +73,7 @@ export const renameEntryInteractive = async (currentPath: string[], name: string
       body: JSON.stringify({ path: from.join("/"), to: to.join("/") })
     });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      showToast(body.error ?? "failed to rename", "error");
+      showToast(await errorMessage(res, "failed to rename"), "error");
       return;
     }
     notifyFsChanged([from, to]);
@@ -100,8 +99,7 @@ export const deleteEntryInteractive = async (currentPath: string[], name: string
   try {
     const res = await fetch(`/api/entry?path=${encodeURIComponent(target.join("/"))}`, { method: "DELETE" });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      showToast(body.error ?? "failed to delete", "error");
+      showToast(await errorMessage(res, "failed to delete"), "error");
       return;
     }
     notifyFsChanged([target]);
@@ -131,8 +129,7 @@ export const moveEntryTo = async (source: TMoveSource, destDir: string[]): Promi
       body: JSON.stringify({ path: from.join("/"), to: to.join("/") })
     });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      showToast(body.error ?? "failed to move", "error");
+      showToast(await errorMessage(res, "failed to move"), "error");
       return false;
     }
     notifyFsChanged([from, to]);

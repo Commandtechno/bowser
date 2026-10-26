@@ -25,6 +25,8 @@ import Layout from "../layouts/Layout.astro";
 </Layout>
 
 <script>
+  import { errorMessage } from "../lib/http";
+
   const $form = document.getElementById("setup-form") as HTMLFormElement;
   const $error = document.getElementById("error")!;
   const $submit = document.getElementById("submit") as HTMLButtonElement;
@@ -56,8 +58,7 @@ import Layout from "../layouts/Layout.astro";
         location.href = "/";
         return;
       }
-      const body = await res.json().catch(() => ({}));
-      showError(body.error ?? "setup failed");
+      showError(await errorMessage(res, "setup failed"));
     } catch {
       showError("network error - is the server up?");
     }

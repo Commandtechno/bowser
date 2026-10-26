@@ -22,6 +22,8 @@ import Layout from "../layouts/Layout.astro";
 </Layout>
 
 <script>
+  import { errorMessage } from "../lib/http";
+
   const $form = document.getElementById("login-form") as HTMLFormElement;
   const $error = document.getElementById("error")!;
   const $submit = document.getElementById("submit") as HTMLButtonElement;
@@ -43,8 +45,7 @@ import Layout from "../layouts/Layout.astro";
         location.href = "/";
         return;
       }
-      const body = await res.json().catch(() => ({}));
-      $error.textContent = body.error ?? "sign in failed";
+      $error.textContent = await errorMessage(res, "sign in failed");
       $error.hidden = false;
     } catch {
       $error.textContent = "network error - is the server up?";

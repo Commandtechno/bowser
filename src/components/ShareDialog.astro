@@ -34,6 +34,7 @@
 </dialog>
 
 <script>
+  import { errorMessage } from "../lib/http";
   import { showToast } from "../lib/toast";
 
   const $dialog = document.getElementById("share-dialog") as HTMLDialogElement;
@@ -85,8 +86,7 @@
         body: JSON.stringify({ path: currentPath.join("/"), durationSeconds: durationSeconds() })
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        flash(body.error ?? "failed to create link", false);
+        flash(await errorMessage(res, "failed to create link"), false);
         $create.disabled = false;
         $create.textContent = "create link";
         return;
