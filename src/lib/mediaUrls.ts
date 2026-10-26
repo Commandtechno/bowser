@@ -11,7 +11,6 @@ export type TMediaUrls = {
   fileUrl: string;
   thumbUrl: string;
   viewUrl: string;
-  isRaw: boolean;
   isCode: boolean;
   isPdf: boolean;
   // kinds that can't be viewed as the file itself (raw sensor data, code, pdf) - the
@@ -36,5 +35,5 @@ export const getMediaUrls = (currentPath: string[], file: TFileEntry): TMediaUrl
         ? `/pdf?path=${encodeURIComponent(key)}`
         : fileUrl;
 
-  return { key, kind, fileUrl, thumbUrl, viewUrl, isRaw, isCode, isPdf, indirect: isRaw || isCode || isPdf };
+  return { key, kind, fileUrl, thumbUrl, viewUrl, isCode, isPdf, indirect: isRaw || isCode || isPdf };
 };
