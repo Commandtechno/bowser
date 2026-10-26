@@ -43,7 +43,6 @@ const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "share
   import { classifyMedia, iconFor } from "../lib/mediaKind";
   import { humanDate, humanSize } from "../lib/format";
   import { downloadFolder, supportsFolderDownload } from "../lib/downloadFolder";
-  import { showToast } from "../lib/toast";
   import { folderIcon } from "../lib/folderIcon";
   import type { TDirListing } from "../lib/media";
 
@@ -123,25 +122,16 @@ const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "share
         const subPath = getSubPath();
         const name = subPath.at(-1) ?? rootName;
         $downloadFolder.disabled = true;
-        try {
-          await downloadFolder(
-            name,
-            async relPath => {
-              const r = await fetch(listUrl([...subPath, ...relPath.split("/").filter(Boolean)]));
-              if (!r.ok) throw new Error("failed to list folder");
-              return r.json();
-            },
-            relPath => fileUrl([...subPath, ...relPath.split("/").filter(Boolean)])
-          );
-          showToast(`"${name}" downloaded`, "success");
-        } catch (e) {
-          if ((e as { name?: string } | undefined)?.name !== "AbortError") {
-            console.error(e);
-            showToast(`failed to download "${name}"`, "error");
-          }
-        } finally {
-          $downloadFolder.disabled = false;
-        }
+        await downloadFolder(
+          name,
+          async relPath => {
+            const r = await fetch(listUrl([...subPath, ...relPath.split("/").filter(Boolean)]));
+            if (!r.ok) throw new Error("failed to list folder");
+            return r.json();
+          },
+          relPath => fileUrl([...subPath, ...relPath.split("/").filter(Boolean)])
+        );
+        $downloadFolder.disabled = false;
       });
     } else {
       $downloadFolder.disabled = true;
