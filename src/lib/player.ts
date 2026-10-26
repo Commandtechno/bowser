@@ -1,5 +1,6 @@
 import "./player.css";
 import type { AudioBufferSink, CanvasSink, Input, WrappedAudioBuffer, WrappedCanvas } from "mediabunny";
+import { formatTime } from "./format";
 
 // custom media player used for video + audio lightbox slides (see Explorer.astro).
 // light dom on purpose: fancybox finds the inner <video> to pause it on slide change,
@@ -44,15 +45,6 @@ const ICONS = {
   fs: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zM5 10h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>',
   fsExit:
     '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>'
-};
-
-const formatTime = (secs: number): string => {
-  if (!Number.isFinite(secs) || secs < 0) secs = 0;
-  const s = Math.floor(secs % 60);
-  const m = Math.floor(secs / 60) % 60;
-  const h = Math.floor(secs / 3600);
-  const mm = h ? String(m).padStart(2, "0") : String(m);
-  return `${h ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
 };
 
 class PwPlayer extends HTMLElement {

@@ -2,7 +2,7 @@
 // on window" shape as lib/path.ts's pathUpdate event. Explorer.astro sets/clears this on
 // click (panel preview mode) and close; PreviewPanel.astro is the sole reader/renderer.
 
-import type { TFileEntry } from "./mediaUrls";
+import type { TFileEntry } from "./media";
 
 export type TPreviewItem = {
   currentPath: string[];

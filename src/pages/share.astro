@@ -45,6 +45,7 @@ const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "share
   import { downloadFolder, supportsFolderDownload } from "../lib/downloadFolder";
   import { showToast } from "../lib/toast";
   import { folderIcon } from "../lib/folderIcon";
+  import type { TDirListing } from "../lib/media";
 
   const $path = document.getElementById("path");
   const $explorer = document.getElementById("explorer");
@@ -55,9 +56,6 @@ const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "share
   if ($path && $explorer && $downloadFolder) {
     const token = $explorer.dataset.token!;
     const rootName = $explorer.dataset.rootName!;
-
-    type TFileEntry = { name: string; size: number; mtime: number };
-    type TListing = { dirs: string[]; files: TFileEntry[] };
 
     const getSubPath = (): string[] => decodeURIComponent(location.hash.replace("#", "")).split("/").filter(Boolean);
     const subPathHref = (subPath: string[]): string => `#${subPath.join("/")}`;
@@ -77,7 +75,7 @@ const rootName = share ? (share.path.split("/").filter(Boolean).at(-1) ?? "share
       render(crumbs, $path);
     };
 
-    const renderExplorer = (subPath: string[], listing: TListing) => {
+    const renderExplorer = (subPath: string[], listing: TDirListing) => {
       const items = [];
       for (const dir of listing.dirs) {
         const dirPath = [...subPath, dir];

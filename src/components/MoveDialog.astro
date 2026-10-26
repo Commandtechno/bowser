@@ -13,7 +13,7 @@
 
 <script>
   import { html, render } from "lit-html";
-  import { moveEntryTo, type TMoveSource } from "../lib/folderActions";
+  import { isPathWithin, moveEntryTo, type TMoveSource } from "../lib/folderActions";
 
   const $dialog = document.getElementById("move-dialog") as HTMLDialogElement;
   const $target = document.getElementById("move-target")!;
@@ -52,11 +52,8 @@
   };
 
   // moving a folder into itself or one of its own descendants isn't a valid destination
-  const isDisallowed = (path: string[]): boolean => {
-    if (!source || !source.isDir) return false;
-    const from = [...source.currentPath, source.name];
-    return from.length <= path.length && from.every((seg, i) => path[i] === seg);
-  };
+  const isDisallowed = (path: string[]): boolean =>
+    !!source && source.isDir && isPathWithin(path, [...source.currentPath, source.name]);
 
   const isCurrentParent = (path: string[]): boolean => !!source && path.join("/") === source.currentPath.join("/");
 

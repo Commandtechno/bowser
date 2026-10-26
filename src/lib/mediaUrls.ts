@@ -2,9 +2,8 @@
 // side-panel preview (PreviewPanel.astro) - keeps both in sync on how each media kind
 // is actually viewed vs downloaded
 
+import type { TFileEntry } from "./media";
 import { classifyMedia, type MediaKind } from "./mediaKind";
-
-export type TFileEntry = { name: string; size: number; mtime: number };
 
 export type TMediaUrls = {
   key: string;

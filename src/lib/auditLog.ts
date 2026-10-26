@@ -33,7 +33,7 @@ const auditLogQuery = () =>
 
 export type TAuditLogRow = Awaited<ReturnType<typeof auditLogQuery>>[number];
 
-type TDeleteDetail = { trashId: string; isDir: boolean; size: number | null };
+export type TDeleteDetail = { trashId: string; isDir: boolean; size: number | null };
 type TMoveDetail = { from: string; to: string };
 type TRestoreDetail = { trashId: string; fromLogId: number; restoredPath: string };
 type TPurgeDetail = { trashId: string; fromLogId: number };
