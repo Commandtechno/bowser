@@ -21,12 +21,8 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
   const denied = requireAdmin(locals);
   if (denied) return denied;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json(400, { error: "invalid request" });
-  }
+  const body: unknown = await request.json().catch(() => undefined);
+  if (body === undefined) return json(400, { error: "invalid request" });
   const { id } = (body ?? {}) as { id?: unknown };
   if (typeof id !== "number" || !Number.isInteger(id)) return json(400, { error: "id is required" });
 

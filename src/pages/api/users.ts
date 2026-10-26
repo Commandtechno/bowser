@@ -21,12 +21,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
   const denied = requireAdmin(locals);
   if (denied) return denied;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json(400, { error: "invalid request" });
-  }
+  const body: unknown = await request.json().catch(() => undefined);
+  if (body === undefined) return json(400, { error: "invalid request" });
   const { username, password, role, homeDir } = (body ?? {}) as {
     username?: unknown;
     password?: unknown;
@@ -67,12 +63,8 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
   const denied = requireAdmin(locals);
   if (denied) return denied;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json(400, { error: "invalid request" });
-  }
+  const body: unknown = await request.json().catch(() => undefined);
+  if (body === undefined) return json(400, { error: "invalid request" });
   const { id, password, role, homeDir } = (body ?? {}) as {
     id?: unknown;
     password?: unknown;
