@@ -9,12 +9,8 @@ const LOCKOUT_MS = 60_000;
 const failures = new Map<string, { count: number; lockedUntil: number }>();
 
 export const POST: APIRoute = async ({ request, cookies }) => {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json(400, { error: "invalid request" });
-  }
+  const body: unknown = await request.json().catch(() => undefined);
+  if (body === undefined) return json(400, { error: "invalid request" });
 
   const { username, password } = (body ?? {}) as { username?: unknown; password?: unknown };
   if (!validateUsername(username) || typeof password !== "string" || password.length === 0)

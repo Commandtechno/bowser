@@ -18,12 +18,8 @@ export const GET: APIRoute = async ({ locals }) => json(200, { user: locals.user
 export const PATCH: APIRoute = async ({ request, locals }) => {
   const user = locals.user!;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json(400, { error: "invalid request" });
-  }
+  const body: unknown = await request.json().catch(() => undefined);
+  if (body === undefined) return json(400, { error: "invalid request" });
   const { accentColor, syntaxTheme, previewMode, currentPassword, newPassword } = (body ?? {}) as {
     accentColor?: unknown;
     syntaxTheme?: unknown;

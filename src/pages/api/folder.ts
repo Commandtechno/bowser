@@ -7,12 +7,8 @@ import { absToRootRel, createFolder, InvalidPathError, resolveInDir, rootDirFor 
 export const POST: APIRoute = async ({ request, locals }) => {
   if (!canWrite(locals.user!)) return json(403, { error: "read-only account" });
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json(400, { error: "invalid request" });
-  }
+  const body: unknown = await request.json().catch(() => undefined);
+  if (body === undefined) return json(400, { error: "invalid request" });
   const { path } = (body ?? {}) as { path?: unknown };
   if (typeof path !== "string" || !path) return json(400, { error: "path is required" });
 

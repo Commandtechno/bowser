@@ -14,12 +14,8 @@ import { countUsers, createUser } from "../../../lib/users";
 export const POST: APIRoute = async ({ request, cookies }) => {
   if ((await countUsers()) > 0) return json(403, { error: "setup already completed" });
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json(400, { error: "invalid request" });
-  }
+  const body: unknown = await request.json().catch(() => undefined);
+  if (body === undefined) return json(400, { error: "invalid request" });
 
   const { username, password } = (body ?? {}) as { username?: unknown; password?: unknown };
   if (!validateUsername(username))

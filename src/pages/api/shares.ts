@@ -33,12 +33,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
   const user = locals.user!;
   if (!canWrite(user)) return json(403, { error: "read-only account" });
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json(400, { error: "invalid request" });
-  }
+  const body: unknown = await request.json().catch(() => undefined);
+  if (body === undefined) return json(400, { error: "invalid request" });
   const { path, durationSeconds } = (body ?? {}) as { path?: unknown; durationSeconds?: unknown };
 
   if (typeof path !== "string") return json(400, { error: "path is required" });
