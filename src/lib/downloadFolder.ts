@@ -1,7 +1,9 @@
 // writes a folder straight to disk via the File System Access API - no zip archive, no
 // intermediate blob: each file streams directly from its fetch response into a handle
 // created under the picked directory. Requires "readwrite" access, which is what prompts
-// the browser's edit-access permission dialog.
+// the browser's edit-access permission dialog. Reports success/failure itself as a toast.
+
+import { showToast } from "./toast";
 
 export type TListResult = { dirs: string[]; files: { name: string }[] };
 export type TListFn = (relPath: string) => Promise<TListResult>;
@@ -12,11 +14,6 @@ export const supportsFolderDownload = (): boolean => typeof window.showDirectory
 // rootName is the folder's own name - a subdirectory of that name is created inside
 // whatever location the user picks, so files never get dumped loose into it
 export const downloadFolder = async (rootName: string, list: TListFn, fileUrl: TFileUrlFn): Promise<void> => {
-  if (!window.showDirectoryPicker) throw new Error("folder download is not supported in this browser");
-
-  const pickedHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-  const rootHandle = await pickedHandle.getDirectoryHandle(rootName, { create: true });
-
   const walk = async (relPath: string, dirHandle: FileSystemDirectoryHandle): Promise<void> => {
     const { dirs, files } = await list(relPath);
 
@@ -38,5 +35,15 @@ export const downloadFolder = async (rootName: string, list: TListFn, fileUrl: T
     }
   };
 
-  await walk("", rootHandle);
+  try {
+    if (!window.showDirectoryPicker) throw new Error("folder download is not supported in this browser");
+    const pickedHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    const rootHandle = await pickedHandle.getDirectoryHandle(rootName, { create: true });
+    await walk("", rootHandle);
+    showToast(`"${rootName}" downloaded`, "success");
+  } catch (e) {
+    if ((e as { name?: string } | undefined)?.name === "AbortError") return; // user cancelled the picker
+    console.error(e);
+    showToast(`failed to download "${rootName}"`, "error");
+  }
 };

@@ -142,25 +142,16 @@ export const moveEntryTo = async (source: TMoveSource, destDir: string[]): Promi
   }
 };
 
-export const downloadAppFolder = async (dirPath: string[]): Promise<void> => {
-  const name = dirPath.at(-1) ?? "files";
-  try {
-    await downloadFolder(
-      name,
-      async relPath => {
-        const res = await fetch(`/api/list?path=${encodeURIComponent(joinPath(dirPath, relPath))}`);
-        if (!res.ok) throw new Error("failed to list folder");
-        return res.json();
-      },
-      relPath => `/api/file?path=${encodeURIComponent(joinPath(dirPath, relPath))}`
-    );
-    showToast(`"${name}" downloaded`, "success");
-  } catch (e) {
-    if ((e as { name?: string } | undefined)?.name === "AbortError") return; // user cancelled the picker
-    console.error(e);
-    showToast(`failed to download "${name}"`, "error");
-  }
-};
+export const downloadAppFolder = (dirPath: string[]): Promise<void> =>
+  downloadFolder(
+    dirPath.at(-1) ?? "files",
+    async relPath => {
+      const res = await fetch(`/api/list?path=${encodeURIComponent(joinPath(dirPath, relPath))}`);
+      if (!res.ok) throw new Error("failed to list folder");
+      return res.json();
+    },
+    relPath => `/api/file?path=${encodeURIComponent(joinPath(dirPath, relPath))}`
+  );
 
 export const downloadAppFile = (currentPath: string[], file: TFileEntry): void => {
   const key = [...currentPath, file.name].join("/");
