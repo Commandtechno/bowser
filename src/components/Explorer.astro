@@ -32,6 +32,7 @@
   import { createFolderInteractive, fileContextMenuItems, folderContextMenuItems } from "../lib/folderActions";
   import { enqueueDrop, enqueueFiles, enqueueFileListWithPaths } from "../lib/uploadQueue";
   import { folderIcon } from "../lib/folderIcon";
+  import type { TDirListing, TFileEntry } from "../lib/media";
   import "../lib/player";
 
   // fancybox (js + css) is only needed in lightbox mode - dynamically imported so panel-mode
@@ -55,9 +56,6 @@
   const $viewList = document.getElementById("view-list")!;
   const $zoom = document.getElementById("zoom") as HTMLInputElement;
 
-  type TFileEntry = { name: string; size: number; mtime: number };
-  type TListing = { dirs: string[]; files: TFileEntry[] };
-
   type TSortKey = "name" | "mtime" | "size";
   let sortKey = (localStorage.getItem("explorer:sort") ?? "name") as TSortKey;
   let sortAsc = (localStorage.getItem("explorer:asc") ?? "1") === "1";
@@ -78,7 +76,7 @@
 
   let zoom = clampZoom(Number(localStorage.getItem("explorer:zoom")) || ZOOM_DEFAULT);
 
-  let listing: TListing | null = null;
+  let listing: TDirListing | null = null;
 
   const applyZoom = () => $explorer.style.setProperty("--zoom", String(zoom / 100));
 

@@ -14,12 +14,12 @@
 
 <script>
   import { html, nothing, render } from "lit-html";
-  import { getMediaUrls, type TFileEntry, type TMediaUrls } from "../lib/mediaUrls";
+  import { getMediaUrls, type TMediaUrls } from "../lib/mediaUrls";
   import { humanDate, humanSize } from "../lib/format";
+  import type { TFileEntry } from "../lib/media";
+  import type { TMetaField } from "../lib/meta";
   import { closePreview, getPreviewItem, stepPreview } from "../lib/previewState";
   import "../lib/player";
-
-  type TMetaField = { label: string; value: string };
 
   const $panel = document.getElementById("preview-panel")!;
   const $title = document.getElementById("panel-title")!;

@@ -1,5 +1,6 @@
 import { runCapture } from "./exec";
 import { exiftoolCapture } from "./exiftool";
+import { formatTime } from "./format";
 import type { MediaKind } from "./mediaKind";
 
 export type TMetaField = { label: string; value: string };
@@ -64,15 +65,6 @@ const PDF_LABELS: Record<string, string> = {
 
 export const getPdfMeta = (path: string): Promise<TMetaField[]> => runExiftoolFields(path, PDF_TAGS, PDF_LABELS);
 
-const fmtDuration = (secs: number): string => {
-  if (!Number.isFinite(secs) || secs < 0) return "0:00";
-  const s = Math.floor(secs % 60);
-  const m = Math.floor(secs / 60) % 60;
-  const h = Math.floor(secs / 3600);
-  const mm = h ? String(m).padStart(2, "0") : String(m);
-  return `${h ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
-};
-
 type TFfprobeStream = {
   codec_type?: string;
   codec_name?: string;
@@ -121,7 +113,7 @@ export const getMediaMeta = async (path: string): Promise<TMetaField[]> => {
     if (audio.channels) fields.push({ label: "channels", value: String(audio.channels) });
   }
 
-  if (format.duration) fields.push({ label: "duration", value: fmtDuration(Number(format.duration)) });
+  if (format.duration) fields.push({ label: "duration", value: formatTime(Number(format.duration)) });
   if (format.bit_rate) fields.push({ label: "bit rate", value: `${Math.round(Number(format.bit_rate) / 1000)} kbps` });
 
   const tags = format.tags ?? {};

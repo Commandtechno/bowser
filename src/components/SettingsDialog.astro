@@ -196,10 +196,11 @@ const isAdmin = user.role === "admin";
 
 <script>
   import { html, render } from "lit-html";
-  import type { TAuditLogRow as TAuditEntry } from "../lib/auditLog";
+  import type { TAuditLogRow as TAuditEntry, TDeleteDetail, TRevertResult } from "../lib/auditLog";
   import { currentUserId, isAdmin } from "../lib/clientSession";
   import { confirmAction } from "../lib/confirmDialog";
   import { notifyFsChanged } from "../lib/folderActions";
+  import { humanSize } from "../lib/format";
   import { ROLES, type TRole } from "../lib/roles";
   import type { TShareLink as TShareEntry } from "../lib/shareLinks";
   import { nowS } from "../lib/time";
@@ -592,19 +593,6 @@ const isAdmin = user.role === "admin";
   const $historyMoreWrap = document.getElementById("history-more-wrap")!;
   const $historyMore = document.getElementById("history-more")!;
 
-  const fmtSize = (n: number | null | undefined): string => {
-    if (n == null) return "";
-    if (n < 1024) return `${n} B`;
-    const units = ["KB", "MB", "GB", "TB"];
-    let v = n / 1024;
-    let i = 0;
-    while (v >= 1024 && i < units.length - 1) {
-      v /= 1024;
-      i++;
-    }
-    return `${v.toFixed(1)} ${units[i]}`;
-  };
-
   const baseName = (path: string): string => path.split("/").filter(Boolean).pop() ?? path;
 
   const describeEntry = (e: TAuditEntry): string => {
@@ -613,7 +601,7 @@ const isAdmin = user.role === "admin";
       case "create_folder":
         return `created folder "/${e.path}"`;
       case "upload":
-        return `uploaded "${baseName(e.path)}"${detail?.size != null ? ` (${fmtSize(detail.size)})` : ""}`;
+        return `uploaded "${baseName(e.path)}"${detail?.size != null ? ` (${humanSize(detail.size)})` : ""}`;
       case "move": {
         const { from, to } = detail as { from: string; to: string };
         const sameParent = from.split("/").slice(0, -1).join("/") === to.split("/").slice(0, -1).join("/");
@@ -689,7 +677,7 @@ const isAdmin = user.role === "admin";
       showToast(body.error ?? "revert failed", "error");
       return;
     }
-    const result = (await res.json()) as { reverted: number[]; failedAt?: { id: number; error: string } };
+    const result = (await res.json()) as TRevertResult;
     notifyFsChanged(affectedPaths(historyEntries, result.reverted));
     if (result.failedAt) {
       showToast(`reverted ${result.reverted.length} action(s), then stopped: ${result.failedAt.error}`, "error");
@@ -734,8 +722,6 @@ const isAdmin = user.role === "admin";
   $historyMore.addEventListener("click", () => loadHistory(false));
 
   // ---- trash ----
-
-  type TDeleteDetail = { trashId: string; isDir: boolean; size: number | null };
 
   const $trashList = document.getElementById("trash-list")!;
   const $trashEmpty = document.getElementById("trash-empty") as HTMLButtonElement;
@@ -828,7 +814,7 @@ const isAdmin = user.role === "admin";
               <span class="row-name" title=${`/${e.path}`}>${d.isDir ? "📁" : "📄"} ${baseName(e.path)}</span>
               <span class="row-role">
                 deleted by ${e.username} · ${new Date(e.createdAt * 1000).toLocaleString()}
-                ${d.size != null ? ` · ${fmtSize(d.size)}` : ""}
+                ${d.size != null ? ` · ${humanSize(d.size)}` : ""}
               </span>
             </div>
             ${isAdmin

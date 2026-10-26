@@ -7,13 +7,13 @@ import { confirmAction } from "./confirmDialog";
 import type { TContextMenuItem } from "./contextMenu";
 import { downloadFolder, supportsFolderDownload } from "./downloadFolder";
 import { getCurrentPath, updatePath } from "./path";
-import type { TFileEntry } from "./mediaUrls";
+import type { TFileEntry } from "./media";
 import { showToast } from "./toast";
 
 const joinPath = (base: string[], relPath: string): string => [...base, ...relPath.split("/").filter(Boolean)].join("/");
 
 // true if `path` is `prefix` or lives somewhere underneath it
-const isPathWithin = (path: string[], prefix: string[]): boolean =>
+export const isPathWithin = (path: string[], prefix: string[]): boolean =>
   prefix.length <= path.length && prefix.every((seg, i) => path[i] === seg);
 
 // the parent dir (as a "/"-joined key, "" for root) of every affected path - both callers
