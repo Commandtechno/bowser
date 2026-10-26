@@ -201,6 +201,7 @@ const isAdmin = user.role === "admin";
   import { confirmAction } from "../lib/confirmDialog";
   import { notifyFsChanged } from "../lib/folderActions";
   import { humanSize } from "../lib/format";
+  import { errorMessage } from "../lib/http";
   import { ROLES, type TRole } from "../lib/roles";
   import type { TShareLink as TShareEntry } from "../lib/shareLinks";
   import { nowS } from "../lib/time";
@@ -336,8 +337,7 @@ const isAdmin = user.role === "admin";
       flash($pwMsg, "password updated", true);
       $pwForm.reset();
     } else {
-      const body = await res.json().catch(() => ({}));
-      flash($pwMsg, body.error ?? "update failed", false);
+      flash($pwMsg, await errorMessage(res, "update failed"), false);
     }
   });
 
@@ -381,8 +381,7 @@ const isAdmin = user.role === "admin";
     if (!confirmed) return;
     const res = await fetch(`/api/shares?token=${encodeURIComponent(s.token)}`, { method: "DELETE" });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      showToast(body.error ?? "failed to revoke link", "error");
+      showToast(await errorMessage(res, "failed to revoke link"), "error");
     }
     loadShares();
   };
@@ -458,8 +457,7 @@ const isAdmin = user.role === "admin";
       if (res.ok) {
         flash($usersMsg, okMsg, true);
       } else {
-        const body = await res.json().catch(() => ({}));
-        flash($usersMsg, body.error ?? "action failed", false);
+        flash($usersMsg, await errorMessage(res, "action failed"), false);
       }
       loadUsers();
     };
@@ -673,8 +671,7 @@ const isAdmin = user.role === "admin";
       body: JSON.stringify({ id: e.id })
     });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      showToast(body.error ?? "revert failed", "error");
+      showToast(await errorMessage(res, "revert failed"), "error");
       return;
     }
     const result = (await res.json()) as TRevertResult;
@@ -749,8 +746,7 @@ const isAdmin = user.role === "admin";
       body: JSON.stringify({ id: e.id })
     });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      showToast(body.error ?? "restore failed", "error");
+      showToast(await errorMessage(res, "restore failed"), "error");
       return;
     }
     const { path } = (await res.json()) as { path: string };
@@ -770,8 +766,7 @@ const isAdmin = user.role === "admin";
     if (!confirmed) return;
     const res = await fetch(`/api/trash?id=${e.id}`, { method: "DELETE" });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      showToast(body.error ?? "delete failed", "error");
+      showToast(await errorMessage(res, "delete failed"), "error");
       return;
     }
     showToast(`"${baseName(e.path)}" permanently deleted`, "success");
@@ -789,8 +784,7 @@ const isAdmin = user.role === "admin";
     if (!confirmed) return;
     const res = await fetch("/api/trash?all=1", { method: "DELETE" });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      showToast(body.error ?? "failed to empty trash", "error");
+      showToast(await errorMessage(res, "failed to empty trash"), "error");
       return;
     }
     const { purged } = (await res.json()) as { purged: number };
@@ -846,8 +840,7 @@ const isAdmin = user.role === "admin";
     try {
       const res = await fetch("/api/thumb", { method: "DELETE" });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        showToast(body.error ?? "failed to clear thumbnail cache", "error");
+        showToast(await errorMessage(res, "failed to clear thumbnail cache"), "error");
         return;
       }
       showToast("thumbnail cache cleared", "success");
